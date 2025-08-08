@@ -1,8 +1,3 @@
-
-
-
-
-
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext.tsx';
@@ -359,9 +354,25 @@ const AppLogic: React.FC = () => {
         modifySchool(schoolId, school => ({ ...school, courses: school.courses.filter(c => c.id !== courseId)}));
     };
     
-    const addSubject = (schoolId: string, subjectData: Omit<Subject, 'id'>) => {
+    const addSubject = (schoolId: string, subjectData: Omit<Subject, 'id'>, sessionData?: { day: string, timeSlot: string }) => {
         const newSubject: Subject = { ...subjectData, id: generateId() };
-        modifySchool(schoolId, school => ({ ...school, subjects: [...school.subjects, newSubject] }));
+        modifySchool(schoolId, school => {
+            const newSchoolState = {
+                ...school,
+                subjects: [...school.subjects, newSubject],
+            };
+            if (sessionData && sessionData.day && sessionData.timeSlot) {
+                const newSession: ScheduledSession = {
+                    id: generateId(),
+                    subjectId: newSubject.id,
+                    day: sessionData.day,
+                    timeSlot: sessionData.timeSlot,
+                    classroom: newSubject.classroom,
+                };
+                newSchoolState.scheduledSessions = [...(school.scheduledSessions || []), newSession];
+            }
+            return newSchoolState;
+        });
     };
 
     const updateSubject = (schoolId: string, updatedSubject: Subject) => {

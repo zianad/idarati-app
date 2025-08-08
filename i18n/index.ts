@@ -129,6 +129,7 @@ const translations = {
     'defaultClassroom': 'القاعة الافتراضية',
     'scheduledIn': 'مجدولة في',
     'default': 'افتراضي',
+    'sessionTimeOptional': 'توقيت الحصة (اختياري)',
     
     // Levels & Groups
     'addNewLevel': 'إضافة مستوى جديد',
@@ -300,6 +301,7 @@ const translations = {
     'defaultClassroom': 'Salle de classe par défaut',
     'scheduledIn': 'Programmé en',
     'default': 'défaut',
+    'sessionTimeOptional': 'Heure de la séance (Optionnel)',
 
     // Levels & Groups
     'addNewLevel': 'Ajouter un nouveau niveau',

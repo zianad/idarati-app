@@ -14,7 +14,7 @@ export interface User {
 
 export interface Student {
   id: string;
-  name: string;
+  name:string;
   parentPhone: string;
   levelId: string;
   groupIds: string[];
@@ -137,7 +137,7 @@ export interface AppContextType {
   addCourse: (schoolId: string, course: Omit<Course, 'id'>) => void;
   updateCourse: (schoolId: string, course: Course) => void;
   deleteCourse: (schoolId: string, courseId: string) => void;
-  addSubject: (schoolId: string, subject: Omit<Subject, 'id'>) => void;
+  addSubject: (schoolId: string, subject: Omit<Subject, 'id'>, sessionData?: { day: string; timeSlot: string }) => void;
   updateSubject: (schoolId: string, subject: Subject) => void;
   deleteSubject: (schoolId: string, subjectId: string) => void;
   addExpense: (schoolId: string, expense: Omit<Expense, 'id'>) => void;

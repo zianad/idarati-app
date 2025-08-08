@@ -266,63 +266,70 @@ const Schedule: React.FC = () => {
                                     if(cellContent.includes('spanned')) return null;
 
                                     const sessionsInCell = cellContent.filter(c => c !== 'spanned') as ScheduledSession[];
-                                    const session = sessionsInCell[0]; // Assuming one session starts at a time per day
-                                    if (!session) {
-                                       return (
+                                    
+                                    if (sessionsInCell.length === 0) {
+                                        return (
                                             <td key={`${day}_${time}`}
-                                                className="p-1.5 border border-gray-200 dark:border-gray-600 align-top transition-colors h-10"
+                                                className="p-1 border border-gray-200 dark:border-gray-600 align-top transition-colors h-10"
                                                 onDragOver={handleDragOver}
                                                 onDragLeave={handleDragLeave}
                                                 onDrop={(e) => handleDrop(e, day, time)}
                                             />
                                         );
                                     }
-                                    
-                                    const subject = session.subjectId ? school.subjects.find(s => s.id === session.subjectId) : null;
-                                    const course = session.courseId ? school.courses.find(c => c.id === session.courseId) : null;
-                                    const entity = subject || course;
-                                    if (!entity) return <td key={`${day}_${time}`} className="p-1.5 border border-gray-200 dark:border-gray-600"></td>;
 
-                                    const isCourse = !!course;
-                                    const level = subject ? school.levels.find(l => l.id === subject.levelId) : null;
-                                    const teacher = isCourse
-                                        ? school.teachers.find(t => t.courseIds?.includes(entity.id))
-                                        : school.teachers.find(t => t.subjects.includes(entity.id));
-                                    
-                                    const { bg, text } = getColor(entity.name, isCourse);
-                                    const durationInSlots = Math.ceil((session.duration || TIME_GRID_INTERVAL) / TIME_GRID_INTERVAL);
-                                    const cardClasses = `relative p-3 rounded-lg text-sm shadow-md flex flex-col justify-center items-center cursor-move select-none h-full ${isCourse ? 'border-2 border-dashed' : ''}`;
+                                    const maxDurationInSlots = Math.max(1, ...sessionsInCell.map(s => Math.ceil((s.duration || TIME_GRID_INTERVAL) / TIME_GRID_INTERVAL)));
 
                                     return (
                                         <td key={`${day}_${time}`}
-                                            className="p-1.5 border border-gray-200 dark:border-gray-600 align-top transition-colors"
-                                            rowSpan={durationInSlots}
+                                            className="p-1 border border-gray-200 dark:border-gray-600 align-top transition-colors"
+                                            rowSpan={maxDurationInSlots}
                                             onDragOver={handleDragOver}
                                             onDragLeave={handleDragLeave}
                                             onDrop={(e) => handleDrop(e, day, time)}
                                         >
-                                            <div
-                                                key={session.id}
-                                                draggable
-                                                onDragStart={(e) => handleDragStart(e, session)}
-                                                onDragEnd={handleDragEnd}
-                                                style={{ backgroundColor: bg, color: text, borderColor: text }}
-                                                className={cardClasses}
-                                            >
-                                                <div className="absolute top-1.5 right-1.5 rtl:right-auto rtl:left-1.5 z-10 flex gap-1">
-                                                    <button onClick={() => handleDuplicateSession(session.id)} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('add')}>
-                                                        <Copy size={14} className="text-inherit opacity-70" />
-                                                    </button>
-                                                    <button onClick={() => openDeleteConfirmation(session.id)} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('delete')}>
-                                                        <X size={14} className="text-inherit opacity-70" />
-                                                    </button>
-                                                </div>
-                                                <p className="font-bold text-base">{entity.name}</p>
-                                                {level && <p className="opacity-90 font-semibold text-xs">{level.name}</p>}
-                                                <div className="mt-1 opacity-80 text-xs text-center space-y-0.5">
-                                                    <p>{t('classroom')}: {session.classroom}</p>
-                                                    {teacher && <p>{teacher.name}</p>}
-                                                </div>
+                                            <div className="flex flex-col md:flex-row gap-1 h-full">
+                                                {sessionsInCell.map(session => {
+                                                    const subject = session.subjectId ? school.subjects.find(s => s.id === session.subjectId) : null;
+                                                    const course = session.courseId ? school.courses.find(c => c.id === session.courseId) : null;
+                                                    const entity = subject || course;
+                                                    if (!entity) return <div key={session.id} className="flex-1" />;
+
+                                                    const isCourse = !!course;
+                                                    const level = subject ? school.levels.find(l => l.id === subject.levelId) : null;
+                                                    const teacher = isCourse
+                                                        ? school.teachers.find(t => t.courseIds?.includes(entity.id))
+                                                        : school.teachers.find(t => t.subjects.includes(entity.id));
+                                                    
+                                                    const { bg, text } = getColor(entity.name, isCourse);
+                                                    const cardClasses = `relative p-2 rounded-lg text-xs shadow-md flex flex-col justify-center items-center cursor-move select-none h-full flex-1 min-w-0 ${isCourse ? 'border-2 border-dashed' : ''}`;
+
+                                                    return (
+                                                        <div
+                                                            key={session.id}
+                                                            draggable
+                                                            onDragStart={(e) => handleDragStart(e, session)}
+                                                            onDragEnd={handleDragEnd}
+                                                            style={{ backgroundColor: bg, color: text, borderColor: text }}
+                                                            className={cardClasses}
+                                                        >
+                                                            <div className="absolute top-1.5 right-1.5 rtl:right-auto rtl:left-1.5 z-10 flex gap-1">
+                                                                <button onClick={() => handleDuplicateSession(session.id)} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('add')}>
+                                                                    <Copy size={12} className="text-inherit opacity-70" />
+                                                                </button>
+                                                                <button onClick={() => openDeleteConfirmation(session.id)} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('delete')}>
+                                                                    <X size={12} className="text-inherit opacity-70" />
+                                                                </button>
+                                                            </div>
+                                                            <p className="font-bold text-sm md:text-base text-center">{entity.name}</p>
+                                                            {level && <p className="opacity-90 font-semibold">{level.name}</p>}
+                                                            <div className="mt-1 opacity-80 text-center space-y-0.5">
+                                                                <p>{t('classroom')}: {session.classroom}</p>
+                                                                {teacher && <p>{teacher.name}</p>}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </td>
                                     );

@@ -354,22 +354,25 @@ const AppLogic: React.FC = () => {
         modifySchool(schoolId, school => ({ ...school, courses: school.courses.filter(c => c.id !== courseId)}));
     };
     
-    const addSubject = (schoolId: string, subjectData: Omit<Subject, 'id'>, sessionData?: { day: string, timeSlot: string }) => {
+    const addSubject = (schoolId: string, subjectData: Omit<Subject, 'id'>, sessionData?: { day: string, timeSlot: string, classroom: string }[]) => {
         const newSubject: Subject = { ...subjectData, id: generateId() };
         modifySchool(schoolId, school => {
             const newSchoolState = {
                 ...school,
                 subjects: [...school.subjects, newSubject],
+                scheduledSessions: [...(school.scheduledSessions || [])],
             };
-            if (sessionData && sessionData.day && sessionData.timeSlot) {
-                const newSession: ScheduledSession = {
-                    id: generateId(),
-                    subjectId: newSubject.id,
-                    day: sessionData.day,
-                    timeSlot: sessionData.timeSlot,
-                    classroom: newSubject.classroom,
-                };
-                newSchoolState.scheduledSessions = [...(school.scheduledSessions || []), newSession];
+            if (sessionData && sessionData.length > 0) {
+                sessionData.forEach(session => {
+                    const newSession: ScheduledSession = {
+                        id: generateId(),
+                        subjectId: newSubject.id,
+                        day: session.day,
+                        timeSlot: session.timeSlot,
+                        classroom: session.classroom,
+                    };
+                    newSchoolState.scheduledSessions.push(newSession);
+                });
             }
             return newSchoolState;
         });

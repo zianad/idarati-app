@@ -3,7 +3,7 @@ import { useAppContext } from '../../hooks/useAppContext.ts';
 import { useLanguage } from '../../hooks/useLanguage.ts';
 import { useToast } from '../../hooks/useToast.ts';
 import { Subject, Teacher, ScheduledSession, Level } from '../../types/index.ts';
-import { Save, PlusCircle, X } from 'lucide-react';
+import { Save, PlusCircle, X, Copy } from 'lucide-react';
 import Modal from '../../components/Modal.tsx';
 
 const TIME_SLOTS = [
@@ -12,7 +12,7 @@ const TIME_SLOTS = [
     '17:00 - 18:00', '18:00 - 19:00', '19:00 - 20:00', '20:00 - 21:00',
     '21:00 - 22:00', '22:00 - 23:00'
 ];
-const DAYS_OF_WEEK = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday'];
+const DAYS_OF_WEEK = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 const generateId = () => `ss_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 // --- Color Utility ---
@@ -158,6 +158,16 @@ const Schedule: React.FC = () => {
         showToast(t('addSuccess'), 'success');
     };
 
+    const handleDuplicateSession = (sessionId: string) => {
+        const sessionToDuplicate = sessions.find(s => s.id === sessionId);
+        if (sessionToDuplicate) {
+            const newSession = { ...sessionToDuplicate, id: generateId() };
+            setSessions(prev => [...prev, newSession]);
+            setIsDirty(true);
+            showToast(t('addSuccess'), 'success');
+        }
+    };
+
     const openDeleteConfirmation = (sessionId: string) => {
         setSessionToDelete(sessionId);
     };
@@ -258,16 +268,28 @@ const Schedule: React.FC = () => {
                                                             style={{ backgroundColor: bg, color: text }}
                                                             className="relative p-3 rounded-lg text-sm shadow-md flex flex-col justify-center items-center cursor-move select-none flex-1 min-w-[150px]"
                                                         >
-                                                            <button
-                                                                onClick={() => openDeleteConfirmation(session.id)}
-                                                                onMouseDown={(e) => e.stopPropagation()}
-                                                                onTouchStart={(e) => e.stopPropagation()}
-                                                                className="absolute top-1.5 right-1.5 rtl:right-auto rtl:left-1.5 z-10 p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors"
-                                                                aria-label={t('delete')}
-                                                                title={t('delete')}
-                                                            >
-                                                                <X size={14} className="text-inherit opacity-70" />
-                                                            </button>
+                                                            <div className="absolute top-1.5 right-1.5 rtl:right-auto rtl:left-1.5 z-10 flex gap-1">
+                                                                <button
+                                                                    onClick={() => handleDuplicateSession(session.id)}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                    onTouchStart={(e) => e.stopPropagation()}
+                                                                    className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors"
+                                                                    aria-label={t('add')}
+                                                                    title={t('add')}
+                                                                >
+                                                                    <Copy size={14} className="text-inherit opacity-70" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => openDeleteConfirmation(session.id)}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                    onTouchStart={(e) => e.stopPropagation()}
+                                                                    className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors"
+                                                                    aria-label={t('delete')}
+                                                                    title={t('delete')}
+                                                                >
+                                                                    <X size={14} className="text-inherit opacity-70" />
+                                                                </button>
+                                                            </div>
                                                             <p className="font-bold text-base">{subject.name}</p>
                                                             {level && <p className="opacity-90 font-semibold text-xs">{level.name}</p>}
                                                             <div className="mt-1 opacity-80 text-xs text-center space-y-0.5">

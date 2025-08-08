@@ -302,7 +302,7 @@ const Schedule: React.FC = () => {
                                                         : school.teachers.find(t => t.subjects.includes(entity.id));
                                                     
                                                     const { bg, text } = getColor(entity.name, isCourse);
-                                                    const cardClasses = `relative p-2 rounded-lg text-xs shadow-md flex flex-col justify-center items-center cursor-move select-none h-full flex-1 min-w-0 ${isCourse ? 'border-2 border-dashed' : ''}`;
+                                                    const cardClasses = `relative p-2 rounded-lg text-xs shadow-md flex flex-col justify-center items-center cursor-move select-none w-full md:flex-1 min-w-0 ${isCourse ? 'border-2 border-dashed' : ''}`;
 
                                                     return (
                                                         <div

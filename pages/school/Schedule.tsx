@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from '../../hooks/useAppContext.ts';
 import { useLanguage } from '../../hooks/useLanguage.ts';
@@ -55,6 +56,7 @@ const Schedule: React.FC = () => {
         timeSlot: GRANULAR_TIME_SLOTS[0],
         classroom: '',
         duration: 60,
+        levelId: '',
     });
     const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
     
@@ -103,11 +105,17 @@ const Schedule: React.FC = () => {
     
     const handleOpenScheduleModal = () => {
         if (school) {
-            const firstSubject = school.subjects[0];
+            const firstLevel = school.levels[0];
+            const initialLevelId = firstLevel?.id || '';
+            const firstSubject = initialLevelId ? school.subjects.find(s => s.levelId === initialLevelId) : school.subjects[0];
             const firstCourse = school.courses[0];
-            const initialEntityType = firstSubject ? 'subject' : 'course';
-            const initialEntityId = firstSubject ? firstSubject.id : firstCourse?.id || '';
-            const initialClassroom = firstSubject ? firstSubject.classroom : '';
+            const initialEntityType = firstSubject ? 'subject' : (firstCourse ? 'course' : 'subject');
+            const initialEntityId = initialEntityType === 'subject' ? (firstSubject?.id || '') : (firstCourse?.id || '');
+            
+            let initialClassroom = '';
+            if (initialEntityType === 'subject' && firstSubject) {
+                initialClassroom = firstSubject.classroom;
+            }
 
             setNewSessionData({
                 entityType: initialEntityType,
@@ -116,6 +124,7 @@ const Schedule: React.FC = () => {
                 timeSlot: GRANULAR_TIME_SLOTS[0],
                 classroom: initialClassroom,
                 duration: 60,
+                levelId: initialLevelId,
             });
         }
         setIsScheduleModalOpen(true);
@@ -132,6 +141,9 @@ const Schedule: React.FC = () => {
             if(name === 'entityType'){
                 newState.entityId = '';
                 newState.classroom = '';
+                newState.levelId = school?.levels[0]?.id || '';
+            } else if (name === 'levelId') {
+                newState.entityId = ''; // Reset subject when level changes
             } else if (name === 'entityId') {
                 if (newState.entityType === 'subject') {
                     const subject = school?.subjects.find(s => s.id === value);
@@ -324,18 +336,29 @@ const Schedule: React.FC = () => {
             <Modal isOpen={isScheduleModalOpen} onClose={handleCloseScheduleModal} title={t('scheduleSession')}>
                 <form onSubmit={handleScheduleSession} className="space-y-4">
                     <div>
-                        <label className={labelClass}>نوع الحصة</label>
+                        <label className={labelClass}>{t('subject')}</label>
                         <select name="entityType" value={newSessionData.entityType} onChange={handleNewSessionChange} required className={inputClass}>
                             <option value="subject">{t('subject')}</option>
                             <option value="course">{t('trainingCourses')}</option>
                         </select>
                     </div>
+
+                    {newSessionData.entityType === 'subject' && (
+                        <div>
+                            <label className={labelClass}>{t('level')}</label>
+                            <select name="levelId" value={newSessionData.levelId} onChange={handleNewSessionChange} required className={inputClass}>
+                                <option value="" disabled>-- {t('selectLevel')} --</option>
+                                {school.levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+                    
                     <div>
                         <label className={labelClass}>{newSessionData.entityType === 'subject' ? t('selectSubject') : t('selectCourse')}</label>
                         <select name="entityId" value={newSessionData.entityId} onChange={handleNewSessionChange} required className={inputClass}>
                              <option value="" disabled>-- {newSessionData.entityType === 'subject' ? t('selectSubject') : t('selectCourse')} --</option>
                             {newSessionData.entityType === 'subject' 
-                                ? school.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)
+                                ? school.subjects.filter(s => s.levelId === newSessionData.levelId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)
                                 : school.courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
                             }
                         </select>

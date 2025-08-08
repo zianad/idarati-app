@@ -174,6 +174,7 @@ const translations = {
     'selectDay': 'اختر اليوم',
     'selectTime': 'اختر التوقيت',
     'deleteSession': 'حذف الحصة',
+    'selectLevel': 'اختر المستوى',
     'duration': 'المدة',
     'minutes': 'دقائق',
   },
@@ -349,6 +350,7 @@ const translations = {
     'selectDay': 'Sélectionner le jour',
     'selectTime': 'Sélectionner l\'heure',
     'deleteSession': 'Supprimer la session',
+    'selectLevel': 'Sélectionner le niveau',
     'duration': 'Durée',
     'minutes': 'Minutes',
   }

@@ -391,15 +391,17 @@ const AppLogic: React.FC = () => {
             };
             if (sessionData && sessionData.length > 0) {
                 sessionData.forEach(session => {
-                    const newSession: ScheduledSession = {
-                        id: generateId(),
-                        subjectId: newSubject.id,
-                        day: session.day,
-                        timeSlot: session.timeSlot,
-                        classroom: session.classroom,
-                        duration: session.duration || 60,
-                    };
-                    newSchoolState.scheduledSessions.push(newSession);
+                    if (session.day && session.timeSlot && session.classroom) {
+                        const newSession: ScheduledSession = {
+                            id: generateId(),
+                            subjectId: newSubject.id,
+                            day: session.day,
+                            timeSlot: session.timeSlot,
+                            classroom: session.classroom,
+                            duration: session.duration || 60,
+                        };
+                        newSchoolState.scheduledSessions.push(newSession);
+                    }
                 });
             }
             return newSchoolState;

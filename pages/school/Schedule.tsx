@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from '../../hooks/useAppContext.ts';
 import { useLanguage } from '../../hooks/useLanguage.ts';
 import { useToast } from '../../hooks/useToast.ts';
-import { Subject, Teacher, ScheduledSession, Level } from '../../types/index.ts';
+import { Subject, Teacher, ScheduledSession, Level, Course } from '../../types/index.ts';
 import { Save, PlusCircle, X, Copy } from 'lucide-react';
 import Modal from '../../components/Modal.tsx';
 
@@ -16,13 +16,22 @@ const DAYS_OF_WEEK = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 't
 const generateId = () => `ss_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 // --- Color Utility ---
-const PREDEFINED_COLORS = ['#fecaca', '#fef08a', '#bbf7d0', '#bfdbfe', '#e9d5ff', '#fed7aa', '#fbcfe8', '#a7f3d0', '#bae6fd', '#ddd6fe', '#fde68a', '#fecdd3'];
-const DARK_TEXT_COLORS = ['#b91c1c', '#a16207', '#166534', '#1d4ed8', '#7e22ce', '#b45309', '#9d174d', '#047857', '#0369a1', '#6d28d9', '#92400e', '#be123c'];
+const SUBJECT_COLORS = ['#fecaca', '#fef08a', '#bbf7d0', '#bfdbfe', '#e9d5ff', '#fed7aa', '#fbcfe8', '#a7f3d0', '#bae6fd', '#ddd6fe', '#fde68a', '#fecdd3'];
+const SUBJECT_TEXT_COLORS = ['#b91c1c', '#a16207', '#166534', '#1d4ed8', '#7e22ce', '#b45309', '#9d174d', '#047857', '#0369a1', '#6d28d9', '#92400e', '#be123c'];
+
+const COURSE_COLORS = ['#c7d2fe', '#f5d0fe', '#a5f3fc', '#fef9c3', '#dcfce7', '#fce7f3'];
+const COURSE_TEXT_COLORS = ['#4338ca', '#86198f', '#0e7490', '#713f12', '#166534', '#9d174d'];
+
 const stringToHash = (str: string) => { let hash = 0; for (let i = 0; i < str.length; i++) { hash = str.charCodeAt(i) + ((hash << 5) - hash); } return hash; };
-const getColorForClassroom = (classroom: string) => {
-    if (!classroom) return { bg: '#e5e7eb', text: '#1f2937' };
-    const index = Math.abs(stringToHash(classroom)) % PREDEFINED_COLORS.length;
-    return { bg: PREDEFINED_COLORS[index], text: DARK_TEXT_COLORS[index] };
+const getColor = (name: string, isCourse: boolean) => {
+    if (!name) return { bg: '#e5e7eb', text: '#1f2937' };
+    const hash = Math.abs(stringToHash(name));
+    if (isCourse) {
+        const index = hash % COURSE_COLORS.length;
+        return { bg: COURSE_COLORS[index], text: COURSE_TEXT_COLORS[index] };
+    }
+    const index = hash % SUBJECT_COLORS.length;
+    return { bg: SUBJECT_COLORS[index], text: SUBJECT_TEXT_COLORS[index] };
 };
 
 // --- Initial Schedule Generation ---
@@ -69,7 +78,8 @@ const Schedule: React.FC = () => {
     const [isDirty, setIsDirty] = useState(false);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
     const [newSessionData, setNewSessionData] = useState({
-        subjectId: '',
+        entityType: 'subject' as 'subject' | 'course',
+        entityId: '',
         day: DAYS_OF_WEEK[0],
         timeSlot: TIME_SLOTS[0],
         classroom: ''
@@ -115,14 +125,26 @@ const Schedule: React.FC = () => {
     };
     
     const handleOpenScheduleModal = () => {
-        if (school && school.subjects.length > 0) {
-            const firstSubject = school.subjects[0];
-            setNewSessionData({
-                subjectId: firstSubject.id,
-                day: DAYS_OF_WEEK[0],
-                timeSlot: TIME_SLOTS[0],
-                classroom: firstSubject.classroom
-            });
+        if (school) {
+            if(school.subjects.length > 0){
+                 const firstSubject = school.subjects[0];
+                 setNewSessionData({
+                    entityType: 'subject',
+                    entityId: firstSubject.id,
+                    day: DAYS_OF_WEEK[0],
+                    timeSlot: TIME_SLOTS[0],
+                    classroom: firstSubject.classroom || ''
+                });
+            } else if (school.courses.length > 0) {
+                 const firstCourse = school.courses[0];
+                 setNewSessionData({
+                    entityType: 'course',
+                    entityId: firstCourse.id,
+                    day: DAYS_OF_WEEK[0],
+                    timeSlot: TIME_SLOTS[0],
+                    classroom: ''
+                });
+            }
         }
         setIsScheduleModalOpen(true);
     };
@@ -132,26 +154,37 @@ const Schedule: React.FC = () => {
     const handleNewSessionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         
-        if (name === 'subjectId') {
-             const subject = school?.subjects.find(s => s.id === value);
-             setNewSessionData(prev => ({
-                 ...prev,
-                 subjectId: value,
-                 classroom: subject?.classroom || ''
-             }));
-        } else {
-            setNewSessionData(prev => ({ ...prev, [name]: value }));
-        }
+        setNewSessionData(prev => {
+            const newState = {...prev, [name]: value};
+            if(name === 'entityType'){
+                newState.entityId = '';
+                newState.classroom = '';
+            } else if (name === 'entityId') {
+                if (newState.entityType === 'subject') {
+                    const subject = school?.subjects.find(s => s.id === value);
+                    newState.classroom = subject?.classroom || '';
+                } else {
+                    newState.classroom = ''; // Reset classroom for courses
+                }
+            }
+            return newState;
+        });
     };
     
     const handleScheduleSession = (e: React.FormEvent) => {
         e.preventDefault();
-        const { subjectId, day, timeSlot, classroom } = newSessionData;
-        if (!school || !subjectId || !day || !timeSlot || !classroom) {
+        const { entityId, day, timeSlot, classroom, entityType } = newSessionData;
+        if (!school || !entityId || !day || !timeSlot || !classroom) {
             showToast(t('fillAllFields'), 'error');
             return;
         }
-        const newSession: ScheduledSession = { id: generateId(), subjectId, day, timeSlot, classroom };
+        const newSession: ScheduledSession = { 
+            id: generateId(), 
+            day, 
+            timeSlot, 
+            classroom,
+            ...(entityType === 'subject' ? { subjectId: entityId } : { courseId: entityId })
+        };
         setSessions(prev => [...prev, newSession]);
         setIsDirty(true);
         handleCloseScheduleModal();
@@ -254,19 +287,29 @@ const Schedule: React.FC = () => {
                                         >
                                             <div className="flex flex-row gap-1 h-full w-full">
                                                 {sessionsInCell.map(session => {
-                                                    const subject = school.subjects.find(s => s.id === session.subjectId);
-                                                    if (!subject) return null;
-                                                    const level = school.levels.find(l => l.id === subject.levelId);
-                                                    const teacher = school.teachers.find(t => t.subjects.includes(subject.id));
-                                                    const { bg, text } = getColorForClassroom(session.classroom || '');
+                                                    const subject = session.subjectId ? school.subjects.find(s => s.id === session.subjectId) : null;
+                                                    const course = session.courseId ? school.courses.find(c => c.id === session.courseId) : null;
+                                                    const entity = subject || course;
+                                                    if (!entity) return null;
+
+                                                    const isCourse = !!course;
+                                                    const level = subject ? school.levels.find(l => l.id === subject.levelId) : null;
+                                                    const teacher = isCourse
+                                                        ? school.teachers.find(t => t.courseIds?.includes(entity.id))
+                                                        : school.teachers.find(t => t.subjects.includes(entity.id));
+                                                    
+                                                    const { bg, text } = getColor(entity.name, isCourse);
+                                                    
+                                                    const cardClasses = `relative p-3 rounded-lg text-sm shadow-md flex flex-col justify-center items-center cursor-move select-none flex-1 min-w-[150px] ${isCourse ? 'border-2 border-dashed' : ''}`;
+                                                    
                                                     return (
                                                         <div
                                                             key={session.id}
                                                             draggable
                                                             onDragStart={(e) => handleDragStart(e, session)}
                                                             onDragEnd={handleDragEnd}
-                                                            style={{ backgroundColor: bg, color: text }}
-                                                            className="relative p-3 rounded-lg text-sm shadow-md flex flex-col justify-center items-center cursor-move select-none flex-1 min-w-[150px]"
+                                                            style={{ backgroundColor: bg, color: text, borderColor: text }}
+                                                            className={cardClasses}
                                                         >
                                                             <div className="absolute top-1.5 right-1.5 rtl:right-auto rtl:left-1.5 z-10 flex gap-1">
                                                                 <button
@@ -290,7 +333,7 @@ const Schedule: React.FC = () => {
                                                                     <X size={14} className="text-inherit opacity-70" />
                                                                 </button>
                                                             </div>
-                                                            <p className="font-bold text-base">{subject.name}</p>
+                                                            <p className="font-bold text-base">{entity.name}</p>
                                                             {level && <p className="opacity-90 font-semibold text-xs">{level.name}</p>}
                                                             <div className="mt-1 opacity-80 text-xs text-center space-y-0.5">
                                                                 <p>{t('classroom')}: {session.classroom}</p>
@@ -312,9 +355,20 @@ const Schedule: React.FC = () => {
             <Modal isOpen={isScheduleModalOpen} onClose={handleCloseScheduleModal} title={t('scheduleSession')}>
                 <form onSubmit={handleScheduleSession} className="space-y-4">
                     <div>
-                        <label className={labelClass}>{t('selectSubject')}</label>
-                        <select name="subjectId" value={newSessionData.subjectId} onChange={handleNewSessionChange} required className={inputClass}>
-                            {school.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        <label className={labelClass}>نوع الحصة</label>
+                        <select name="entityType" value={newSessionData.entityType} onChange={handleNewSessionChange} required className={inputClass}>
+                            <option value="subject">{t('subject')}</option>
+                            <option value="course">{t('trainingCourses')}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className={labelClass}>{newSessionData.entityType === 'subject' ? t('selectSubject') : t('selectCourse')}</label>
+                        <select name="entityId" value={newSessionData.entityId} onChange={handleNewSessionChange} required className={inputClass}>
+                             <option value="" disabled>-- {newSessionData.entityType === 'subject' ? t('selectSubject') : t('selectCourse')} --</option>
+                            {newSessionData.entityType === 'subject' 
+                                ? school.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)
+                                : school.courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+                            }
                         </select>
                     </div>
                     <div>

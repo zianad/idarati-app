@@ -80,11 +80,14 @@ const SubjectsAndCourses: React.FC = () => {
     
     const [modalState, setModalState] = useState<ModalState>(null);
     
-    // Form state for Course
-    const [courseId, setCourseId] = useState('');
-    const [courseName, setCourseName] = useState('');
-    const [courseFee, setCourseFee] = useState(0);
-    const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([]);
+    const initialCourseData = {
+        id: '',
+        name: '',
+        fee: 0,
+        teacherIds: [] as string[],
+        sessions: [] as {day: string, timeSlot: string, classroom: string}[]
+    };
+    const [courseFormData, setCourseFormData] = useState(initialCourseData);
     
     // Form state for Subject
     const initialSubjectData = {
@@ -115,32 +118,33 @@ const SubjectsAndCourses: React.FC = () => {
                 });
            } else if (modalState.type === 'course') {
                 const course = modalState.data as Course;
-                setCourseId(course.id);
-                setCourseName(course.name);
-                setCourseFee(course.fee);
-                setSelectedTeacherIds(course.teacherIds || []);
+                setCourseFormData({
+                    id: course.id,
+                    name: course.name,
+                    fee: course.fee,
+                    teacherIds: course.teacherIds || [],
+                    sessions: [],
+                });
            }
         } else {
             // Reset forms for 'add' mode
             setSubjectFormData({...initialSubjectData, levelId: school?.levels[0]?.id || '', sessions: []});
-            setCourseId('');
-            setCourseName('');
-            setCourseFee(0);
-            setSelectedTeacherIds([]);
+            setCourseFormData(initialCourseData);
         }
     }, [modalState, school?.levels]);
 
     const handleCourseSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!currentUser?.schoolId || !courseName) return;
+        if (!currentUser?.schoolId || !courseFormData.name) return;
         
-        const courseData = { name: courseName, fee: courseFee, teacherIds: selectedTeacherIds };
+        const courseData = { name: courseFormData.name, fee: courseFormData.fee, teacherIds: courseFormData.teacherIds };
 
-        if (modalState?.mode === 'edit' && courseId) {
-            updateCourse(currentUser.schoolId, { id: courseId, ...courseData });
+        if (modalState?.mode === 'edit' && courseFormData.id) {
+            updateCourse(currentUser.schoolId, { id: courseFormData.id, ...courseData });
             showToast(t('editSuccess'), 'success');
         } else {
-            addCourse(currentUser.schoolId, courseData);
+            const sessionData = courseFormData.sessions.filter(s => s.day && s.timeSlot && s.classroom);
+            addCourse(currentUser.schoolId, courseData, sessionData.length > 0 ? sessionData : undefined);
             showToast(t('addSuccess'), 'success');
         }
         setModalState(null);
@@ -179,30 +183,34 @@ const SubjectsAndCourses: React.FC = () => {
     };
 
     const handleTeacherChange = (teacherId: string) => {
-        setSelectedTeacherIds(prev =>
-            prev.includes(teacherId)
-                ? prev.filter(id => id !== teacherId)
-                : [...prev, teacherId]
-        );
+        setCourseFormData(prev => ({
+            ...prev,
+            teacherIds: prev.teacherIds.includes(teacherId)
+                ? prev.teacherIds.filter(id => id !== teacherId)
+                : [...prev.teacherIds, teacherId]
+        }));
     };
 
-    const handleSessionChange = (index: number, field: string, value: string) => {
-        setSubjectFormData(prev => {
+    const handleSessionChange = (index: number, field: string, value: string, formType: 'subject' | 'course') => {
+        const formSetter = formType === 'subject' ? setSubjectFormData : setCourseFormData;
+        formSetter(prev => {
             const newSessions = [...prev.sessions];
             newSessions[index] = {...newSessions[index], [field]: value};
             return {...prev, sessions: newSessions};
         });
     }
 
-    const addSessionRow = () => {
-        setSubjectFormData(prev => ({
+    const addSessionRow = (formType: 'subject' | 'course') => {
+        const formSetter = formType === 'subject' ? setSubjectFormData : setCourseFormData;
+        formSetter(prev => ({
             ...prev,
-            sessions: [...prev.sessions, {day: '', timeSlot: '', classroom: prev.classroom || ''}]
+            sessions: [...prev.sessions, {day: '', timeSlot: '', classroom: (prev as typeof initialSubjectData).classroom || ''}]
         }));
     }
 
-    const removeSessionRow = (index: number) => {
-        setSubjectFormData(prev => ({
+    const removeSessionRow = (index: number, formType: 'subject' | 'course') => {
+        const formSetter = formType === 'subject' ? setSubjectFormData : setCourseFormData;
+        formSetter(prev => ({
             ...prev,
             sessions: prev.sessions.filter((_, i) => i !== index)
         }));
@@ -293,11 +301,11 @@ const SubjectsAndCourses: React.FC = () => {
                 <form onSubmit={handleCourseSubmit} className="space-y-4">
                     <div>
                         <label className={labelClass}>{t('courseName')}</label>
-                        <input type="text" value={courseName} onChange={e => setCourseName(e.target.value)} required className={inputClass} />
+                        <input type="text" value={courseFormData.name} onChange={e => setCourseFormData({...courseFormData, name: e.target.value})} required className={inputClass} />
                     </div>
                     <div>
                         <label className={labelClass}>{t('courseFee')}</label>
-                        <input type="number" min="0" value={courseFee} onChange={e => setCourseFee(Number(e.target.value))} required className={inputClass} />
+                        <input type="number" min="0" value={courseFormData.fee} onChange={e => setCourseFormData({...courseFormData, fee: Number(e.target.value)})} required className={inputClass} />
                     </div>
                      <div>
                         <label className={labelClass}>{t('selectTeachers')}</label>
@@ -306,7 +314,7 @@ const SubjectsAndCourses: React.FC = () => {
                                 <label key={teacher.id} className="flex items-center space-x-3 rtl:space-x-reverse cursor-pointer p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-600">
                                     <input
                                         type="checkbox"
-                                        checked={selectedTeacherIds.includes(teacher.id)}
+                                        checked={courseFormData.teacherIds.includes(teacher.id)}
                                         onChange={() => handleTeacherChange(teacher.id)}
                                         className="form-checkbox h-5 w-5 rounded text-blue-600 focus:ring-blue-500 bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-600"
                                     />
@@ -315,6 +323,38 @@ const SubjectsAndCourses: React.FC = () => {
                             ))}
                         </div>
                     </div>
+                    {modalState?.mode === 'add' && (
+                        <div className="pt-4 border-t dark:border-gray-600">
+                            <label className={`${labelClass} mb-2`}>{t('sessionTimeOptional')}</label>
+                            <div className="space-y-3">
+                                {courseFormData.sessions.map((session, index) => (
+                                     <div key={index} className="grid grid-cols-12 gap-2 items-center">
+                                        <div className="col-span-4">
+                                            <select value={session.day} onChange={(e) => handleSessionChange(index, 'day', e.target.value, 'course')} className={inputClass}>
+                                                <option value="">-- {t('selectDay')} --</option>
+                                                {DAYS_OF_WEEK.map(day => <option key={day} value={day}>{t(day as any)}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="col-span-4">
+                                            <select value={session.timeSlot} onChange={(e) => handleSessionChange(index, 'timeSlot', e.target.value, 'course')} className={inputClass}>
+                                                <option value="">-- {t('selectTime')} --</option>
+                                                {TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input type="text" placeholder={t('classroom')} value={session.classroom} onChange={(e) => handleSessionChange(index, 'classroom', e.target.value, 'course')} className={inputClass} />
+                                        </div>
+                                        <div className="col-span-1">
+                                            <button type="button" onClick={() => removeSessionRow(index, 'course')} className="text-red-500 hover:text-red-700 p-2"><MinusCircle size={20}/></button>
+                                        </div>
+                                    </div>
+                                ))}
+                                <button type="button" onClick={() => addSessionRow('course')} className="flex items-center gap-2 text-sm text-blue-600 font-semibold hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                    <PlusCircle size={18}/> {t('add')} {t('scheduleSession')}
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex justify-end space-x-3 rtl:space-x-reverse pt-2">
                         <button type="button" onClick={() => setModalState(null)} className="px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500">{t('cancel')}</button>
                         <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">{t('save')}</button>
@@ -356,26 +396,26 @@ const SubjectsAndCourses: React.FC = () => {
                                 {subjectFormData.sessions.map((session, index) => (
                                      <div key={index} className="grid grid-cols-12 gap-2 items-center">
                                         <div className="col-span-4">
-                                            <select value={session.day} onChange={(e) => handleSessionChange(index, 'day', e.target.value)} className={inputClass}>
+                                            <select value={session.day} onChange={(e) => handleSessionChange(index, 'day', e.target.value, 'subject')} className={inputClass}>
                                                 <option value="">-- {t('selectDay')} --</option>
                                                 {DAYS_OF_WEEK.map(day => <option key={day} value={day}>{t(day as any)}</option>)}
                                             </select>
                                         </div>
                                         <div className="col-span-4">
-                                            <select value={session.timeSlot} onChange={(e) => handleSessionChange(index, 'timeSlot', e.target.value)} className={inputClass}>
+                                            <select value={session.timeSlot} onChange={(e) => handleSessionChange(index, 'timeSlot', e.target.value, 'subject')} className={inputClass}>
                                                 <option value="">-- {t('selectTime')} --</option>
                                                 {TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
                                             </select>
                                         </div>
                                         <div className="col-span-3">
-                                            <input type="text" placeholder={t('classroom')} value={session.classroom} onChange={(e) => handleSessionChange(index, 'classroom', e.target.value)} className={inputClass} />
+                                            <input type="text" placeholder={t('classroom')} value={session.classroom} onChange={(e) => handleSessionChange(index, 'classroom', e.target.value, 'subject')} className={inputClass} />
                                         </div>
                                         <div className="col-span-1">
-                                            <button type="button" onClick={() => removeSessionRow(index)} className="text-red-500 hover:text-red-700 p-2"><MinusCircle size={20}/></button>
+                                            <button type="button" onClick={() => removeSessionRow(index, 'subject')} className="text-red-500 hover:text-red-700 p-2"><MinusCircle size={20}/></button>
                                         </div>
                                     </div>
                                 ))}
-                                <button type="button" onClick={addSessionRow} className="flex items-center gap-2 text-sm text-blue-600 font-semibold hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                                <button type="button" onClick={() => addSessionRow('subject')} className="flex items-center gap-2 text-sm text-blue-600 font-semibold hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
                                     <PlusCircle size={18}/> {t('add')} {t('scheduleSession')}
                                 </button>
                             </div>

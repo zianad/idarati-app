@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext.tsx';
@@ -341,9 +342,31 @@ const AppLogic: React.FC = () => {
         modifySchool(schoolId, school => ({ ...school, groups: school.groups.filter(g => g.id !== groupId)}));
     };
 
-    const addCourse = (schoolId: string, courseData: Omit<Course, 'id'>) => {
+    const addCourse = (schoolId: string, courseData: Omit<Course, 'id'>, sessionData?: { day: string; timeSlot: string; classroom: string; duration: number }[]) => {
         const newCourse: Course = { ...courseData, id: generateId() };
-        modifySchool(schoolId, school => ({ ...school, courses: [...school.courses, newCourse] }));
+        modifySchool(schoolId, school => {
+            const newSchoolState = {
+                ...school,
+                courses: [...school.courses, newCourse],
+                scheduledSessions: [...(school.scheduledSessions || [])],
+            };
+             if (sessionData && sessionData.length > 0) {
+                sessionData.forEach(session => {
+                    if (session.day && session.timeSlot && session.classroom) {
+                        const newSession: ScheduledSession = {
+                            id: generateId(),
+                            courseId: newCourse.id,
+                            day: session.day,
+                            timeSlot: session.timeSlot,
+                            classroom: session.classroom,
+                            duration: session.duration || 60,
+                        };
+                        newSchoolState.scheduledSessions.push(newSession);
+                    }
+                });
+            }
+            return newSchoolState;
+        });
     };
     
     const updateCourse = (schoolId: string, updatedCourse: Course) => {
@@ -351,10 +374,14 @@ const AppLogic: React.FC = () => {
     };
 
     const deleteCourse = (schoolId: string, courseId: string) => {
-        modifySchool(schoolId, school => ({ ...school, courses: school.courses.filter(c => c.id !== courseId)}));
+        modifySchool(schoolId, school => ({
+            ...school,
+            courses: school.courses.filter(c => c.id !== courseId),
+            scheduledSessions: school.scheduledSessions.filter(ss => ss.courseId !== courseId),
+        }));
     };
     
-    const addSubject = (schoolId: string, subjectData: Omit<Subject, 'id'>, sessionData?: { day: string, timeSlot: string, classroom: string }[]) => {
+    const addSubject = (schoolId: string, subjectData: Omit<Subject, 'id'>, sessionData?: { day: string; timeSlot: string; classroom: string; duration: number }[]) => {
         const newSubject: Subject = { ...subjectData, id: generateId() };
         modifySchool(schoolId, school => {
             const newSchoolState = {
@@ -370,6 +397,7 @@ const AppLogic: React.FC = () => {
                         day: session.day,
                         timeSlot: session.timeSlot,
                         classroom: session.classroom,
+                        duration: session.duration || 60,
                     };
                     newSchoolState.scheduledSessions.push(newSession);
                 });

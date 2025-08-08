@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../hooks/useAppContext.ts';
 import { useLanguage } from '../../hooks/useLanguage.ts';
@@ -8,13 +9,14 @@ import { UserRole, Subject, Course } from '../../types/index.ts';
 
 type ModalState = { type: 'course' | 'subject'; mode: 'add' | 'edit'; data?: Course | Subject } | null;
 
-const TIME_SLOTS = [
-    '08:00 - 09:00', '09:00 - 10:00', '10:00 - 11:00', '11:00 - 12:00',
-    '13:00 - 14:00', '14:00 - 15:00', '15:00 - 16:00', '16:00 - 17:00',
-    '17:00 - 18:00', '18:00 - 19:00', '19:00 - 20:00', '20:00 - 21:00',
-    '21:00 - 22:00', '22:00 - 23:00'
-];
+const TIME_SLOTS = Array.from({ length: 28 }, (_, i) => {
+    const hour = Math.floor(i / 2) + 8;
+    const minute = (i % 2) * 30;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+});
+
 const DAYS_OF_WEEK = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+const DURATION_OPTIONS = [30, 45, 60, 90, 120, 150, 180, 210, 240];
 
 
 const SubjectItem: React.FC<{ subject: Subject, onEdit: () => void, onDelete: () => void, isOwner: boolean }> = ({ subject, onEdit, onDelete, isOwner }) => {
@@ -85,7 +87,7 @@ const SubjectsAndCourses: React.FC = () => {
         name: '',
         fee: 0,
         teacherIds: [] as string[],
-        sessions: [] as {day: string, timeSlot: string, classroom: string}[]
+        sessions: [] as {day: string, timeSlot: string, classroom: string, duration: number}[]
     };
     const [courseFormData, setCourseFormData] = useState(initialCourseData);
     
@@ -97,7 +99,7 @@ const SubjectsAndCourses: React.FC = () => {
         sessionsPerMonth: 4,
         classroom: '',
         levelId: '',
-        sessions: [] as {day: string, timeSlot: string, classroom: string}[]
+        sessions: [] as {day: string, timeSlot: string, classroom: string, duration: number}[]
     };
     const [subjectFormData, setSubjectFormData] = useState(initialSubjectData);
 
@@ -191,7 +193,7 @@ const SubjectsAndCourses: React.FC = () => {
         }));
     };
 
-    const handleSessionChange = (index: number, field: string, value: string, formType: 'subject' | 'course') => {
+    const handleSessionChange = (index: number, field: string, value: string | number, formType: 'subject' | 'course') => {
         const formSetter = formType === 'subject' ? setSubjectFormData : setCourseFormData;
         formSetter(prev => {
             const newSessions = [...prev.sessions];
@@ -204,7 +206,7 @@ const SubjectsAndCourses: React.FC = () => {
         const formSetter = formType === 'subject' ? setSubjectFormData : setCourseFormData;
         formSetter(prev => ({
             ...prev,
-            sessions: [...prev.sessions, {day: '', timeSlot: '', classroom: (prev as typeof initialSubjectData).classroom || ''}]
+            sessions: [...prev.sessions, {day: '', timeSlot: '', classroom: (prev as typeof initialSubjectData).classroom || '', duration: 60}]
         }));
     }
 
@@ -329,16 +331,21 @@ const SubjectsAndCourses: React.FC = () => {
                             <div className="space-y-3">
                                 {courseFormData.sessions.map((session, index) => (
                                      <div key={index} className="grid grid-cols-12 gap-2 items-center">
-                                        <div className="col-span-4">
+                                        <div className="col-span-3">
                                             <select value={session.day} onChange={(e) => handleSessionChange(index, 'day', e.target.value, 'course')} className={inputClass}>
                                                 <option value="">-- {t('selectDay')} --</option>
                                                 {DAYS_OF_WEEK.map(day => <option key={day} value={day}>{t(day as any)}</option>)}
                                             </select>
                                         </div>
-                                        <div className="col-span-4">
+                                        <div className="col-span-3">
                                             <select value={session.timeSlot} onChange={(e) => handleSessionChange(index, 'timeSlot', e.target.value, 'course')} className={inputClass}>
                                                 <option value="">-- {t('selectTime')} --</option>
                                                 {TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="col-span-2">
+                                            <select value={session.duration} onChange={(e) => handleSessionChange(index, 'duration', Number(e.target.value), 'course')} className={inputClass}>
+                                                {DURATION_OPTIONS.map(d => <option key={d} value={d}>{d} {t('minutes')}</option>)}
                                             </select>
                                         </div>
                                         <div className="col-span-3">
@@ -395,16 +402,21 @@ const SubjectsAndCourses: React.FC = () => {
                             <div className="space-y-3">
                                 {subjectFormData.sessions.map((session, index) => (
                                      <div key={index} className="grid grid-cols-12 gap-2 items-center">
-                                        <div className="col-span-4">
+                                        <div className="col-span-3">
                                             <select value={session.day} onChange={(e) => handleSessionChange(index, 'day', e.target.value, 'subject')} className={inputClass}>
                                                 <option value="">-- {t('selectDay')} --</option>
                                                 {DAYS_OF_WEEK.map(day => <option key={day} value={day}>{t(day as any)}</option>)}
                                             </select>
                                         </div>
-                                        <div className="col-span-4">
+                                        <div className="col-span-3">
                                             <select value={session.timeSlot} onChange={(e) => handleSessionChange(index, 'timeSlot', e.target.value, 'subject')} className={inputClass}>
                                                 <option value="">-- {t('selectTime')} --</option>
                                                 {TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="col-span-2">
+                                            <select value={session.duration} onChange={(e) => handleSessionChange(index, 'duration', Number(e.target.value), 'subject')} className={inputClass}>
+                                                {DURATION_OPTIONS.map(d => <option key={d} value={d}>{d} {t('minutes')}</option>)}
                                             </select>
                                         </div>
                                         <div className="col-span-3">

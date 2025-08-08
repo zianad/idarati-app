@@ -170,9 +170,12 @@ const translations = {
     'scheduleUpdated': 'تم تحديث البرنامج بنجاح',
     'scheduleSession': 'جدولة حصة',
     'selectSubject': 'اختر المادة',
+    'selectCourse': 'اختر الدورة',
     'selectDay': 'اختر اليوم',
     'selectTime': 'اختر التوقيت',
     'deleteSession': 'حذف الحصة',
+    'duration': 'المدة',
+    'minutes': 'دقائق',
   },
   fr: {
     // General
@@ -342,9 +345,12 @@ const translations = {
     'scheduleUpdated': 'Programme mis à jour avec succès',
     'scheduleSession': 'Planifier une session',
     'selectSubject': 'Sélectionner la matière',
+    'selectCourse': 'Sélectionner le cours',
     'selectDay': 'Sélectionner le jour',
     'selectTime': 'Sélectionner l\'heure',
     'deleteSession': 'Supprimer la session',
+    'duration': 'Durée',
+    'minutes': 'Minutes',
   }
 };
 

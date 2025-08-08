@@ -1,21 +1,25 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from '../../hooks/useAppContext.ts';
 import { useLanguage } from '../../hooks/useLanguage.ts';
 import { useToast } from '../../hooks/useToast.ts';
-import { Subject, Teacher, ScheduledSession, Level, Course } from '../../types/index.ts';
+import { ScheduledSession } from '../../types/index.ts';
 import { Save, PlusCircle, X, Copy } from 'lucide-react';
 import Modal from '../../components/Modal.tsx';
 
-const TIME_SLOTS = [
-    '08:00 - 09:00', '09:00 - 10:00', '10:00 - 11:00', '11:00 - 12:00',
-    '13:00 - 14:00', '14:00 - 15:00', '15:00 - 16:00', '16:00 - 17:00',
-    '17:00 - 18:00', '18:00 - 19:00', '19:00 - 20:00', '20:00 - 21:00',
-    '21:00 - 22:00', '22:00 - 23:00'
-];
+// --- Constants and Helpers ---
 const DAYS_OF_WEEK = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+const TIME_GRID_INTERVAL = 30; // minutes
+const DURATION_OPTIONS = [30, 45, 60, 90, 120, 150, 180, 210, 240];
 const generateId = () => `ss_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-// --- Color Utility ---
+const GRANULAR_TIME_SLOTS = Array.from({ length: (23 - 8) * (60 / TIME_GRID_INTERVAL) }, (_, i) => {
+    const totalMinutes = 8 * 60 + i * TIME_GRID_INTERVAL;
+    const hour = Math.floor(totalMinutes / 60);
+    const minute = totalMinutes % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+});
+
 const SUBJECT_COLORS = ['#fecaca', '#fef08a', '#bbf7d0', '#bfdbfe', '#e9d5ff', '#fed7aa', '#fbcfe8', '#a7f3d0', '#bae6fd', '#ddd6fe', '#fde68a', '#fecdd3'];
 const SUBJECT_TEXT_COLORS = ['#b91c1c', '#a16207', '#166534', '#1d4ed8', '#7e22ce', '#b45309', '#9d174d', '#047857', '#0369a1', '#6d28d9', '#92400e', '#be123c'];
 
@@ -34,39 +38,6 @@ const getColor = (name: string, isCourse: boolean) => {
     return { bg: SUBJECT_COLORS[index], text: SUBJECT_TEXT_COLORS[index] };
 };
 
-// --- Initial Schedule Generation ---
-const initializeSchedule = (subjects: Subject[], teachers: Teacher[]): ScheduledSession[] => {
-    const newSessions: ScheduledSession[] = [];
-    const occupiedSlots: { [key: string]: boolean } = {}; // key: `day_time_classroom` or `day_time_teacherId`
-
-    subjects.forEach(subject => {
-        const weeklySessions = Math.ceil((subject.sessionsPerMonth || 0) / 4);
-        const subjectTeacher = teachers.find(t => t.subjects.includes(subject.id));
-
-        for (let i = 0; i < weeklySessions; i++) {
-            let placed = false;
-            for (const time of TIME_SLOTS) {
-                for (const day of DAYS_OF_WEEK) {
-                    const classroomKey = `${day}_${time}_${subject.classroom}`;
-                    const teacherKey = subjectTeacher ? `${day}_${time}_${subjectTeacher.id}` : null;
-                    const isClassroomOccupied = occupiedSlots[classroomKey];
-                    const isTeacherOccupied = teacherKey ? occupiedSlots[teacherKey] : false;
-
-                    if (!isClassroomOccupied && !isTeacherOccupied) {
-                        newSessions.push({ id: generateId(), subjectId: subject.id, day, timeSlot: time, classroom: subject.classroom });
-                        occupiedSlots[classroomKey] = true;
-                        if (teacherKey) occupiedSlots[teacherKey] = true;
-                        placed = true;
-                        break;
-                    }
-                }
-                if (placed) break;
-            }
-        }
-    });
-    return newSessions;
-};
-
 // --- Main Component ---
 const Schedule: React.FC = () => {
     const { currentUser, findSchool, updateSchedule } = useAppContext();
@@ -81,40 +52,46 @@ const Schedule: React.FC = () => {
         entityType: 'subject' as 'subject' | 'course',
         entityId: '',
         day: DAYS_OF_WEEK[0],
-        timeSlot: TIME_SLOTS[0],
-        classroom: ''
+        timeSlot: GRANULAR_TIME_SLOTS[0],
+        classroom: '',
+        duration: 60,
     });
     const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
     
     useEffect(() => {
         if (school) {
-            if (!school.scheduledSessions || school.scheduledSessions.length === 0) {
-                const initialSessions = initializeSchedule(school.subjects, school.teachers);
-                setSessions(initialSessions);
-                if (initialSessions.length > 0 && currentUser?.schoolId) {
-                    updateSchedule(currentUser.schoolId, initialSessions);
-                }
-            } else {
-                setSessions(school.scheduledSessions);
-            }
+            setSessions(school.scheduledSessions || []);
         }
         setIsDirty(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [school?.id]);
+    }, [school?.id, school?.scheduledSessions]);
 
     const scheduleGrid = useMemo(() => {
-        const grid: { [time: string]: { [day: string]: ScheduledSession[] } } = {};
-        TIME_SLOTS.forEach(time => {
+        const grid: { [time: string]: { [day: string]: (ScheduledSession | 'spanned')[] } } = {};
+        GRANULAR_TIME_SLOTS.forEach(time => {
             grid[time] = {};
             DAYS_OF_WEEK.forEach(day => { grid[time][day] = []; });
         });
+
         sessions.forEach(session => {
             if (grid[session.timeSlot]?.[session.day]) {
                 grid[session.timeSlot][session.day].push(session);
+
+                const durationInSlots = Math.ceil((session.duration || TIME_GRID_INTERVAL) / TIME_GRID_INTERVAL);
+                if (durationInSlots > 1) {
+                    const startTimeIndex = GRANULAR_TIME_SLOTS.indexOf(session.timeSlot);
+                    for (let i = 1; i < durationInSlots; i++) {
+                        const nextSlotIndex = startTimeIndex + i;
+                        if (nextSlotIndex < GRANULAR_TIME_SLOTS.length) {
+                            const nextSlotTime = GRANULAR_TIME_SLOTS[nextSlotIndex];
+                            grid[nextSlotTime][session.day].push('spanned');
+                        }
+                    }
+                }
             }
         });
         return grid;
     }, [sessions]);
+
 
     const handleSave = () => {
         if (school) {
@@ -126,25 +103,20 @@ const Schedule: React.FC = () => {
     
     const handleOpenScheduleModal = () => {
         if (school) {
-            if(school.subjects.length > 0){
-                 const firstSubject = school.subjects[0];
-                 setNewSessionData({
-                    entityType: 'subject',
-                    entityId: firstSubject.id,
-                    day: DAYS_OF_WEEK[0],
-                    timeSlot: TIME_SLOTS[0],
-                    classroom: firstSubject.classroom || ''
-                });
-            } else if (school.courses.length > 0) {
-                 const firstCourse = school.courses[0];
-                 setNewSessionData({
-                    entityType: 'course',
-                    entityId: firstCourse.id,
-                    day: DAYS_OF_WEEK[0],
-                    timeSlot: TIME_SLOTS[0],
-                    classroom: ''
-                });
-            }
+            const firstSubject = school.subjects[0];
+            const firstCourse = school.courses[0];
+            const initialEntityType = firstSubject ? 'subject' : 'course';
+            const initialEntityId = firstSubject ? firstSubject.id : firstCourse?.id || '';
+            const initialClassroom = firstSubject ? firstSubject.classroom : '';
+
+            setNewSessionData({
+                entityType: initialEntityType,
+                entityId: initialEntityId,
+                day: DAYS_OF_WEEK[0],
+                timeSlot: GRANULAR_TIME_SLOTS[0],
+                classroom: initialClassroom,
+                duration: 60,
+            });
         }
         setIsScheduleModalOpen(true);
     };
@@ -153,9 +125,10 @@ const Schedule: React.FC = () => {
     
     const handleNewSessionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
+        const isNumber = e.target.type === 'number'
         
         setNewSessionData(prev => {
-            const newState = {...prev, [name]: value};
+            const newState = {...prev, [name]: isNumber ? Number(value) : value};
             if(name === 'entityType'){
                 newState.entityId = '';
                 newState.classroom = '';
@@ -173,7 +146,7 @@ const Schedule: React.FC = () => {
     
     const handleScheduleSession = (e: React.FormEvent) => {
         e.preventDefault();
-        const { entityId, day, timeSlot, classroom, entityType } = newSessionData;
+        const { entityId, day, timeSlot, classroom, entityType, duration } = newSessionData;
         if (!school || !entityId || !day || !timeSlot || !classroom) {
             showToast(t('fillAllFields'), 'error');
             return;
@@ -183,6 +156,7 @@ const Schedule: React.FC = () => {
             day, 
             timeSlot, 
             classroom,
+            duration,
             ...(entityType === 'subject' ? { subjectId: entityId } : { courseId: entityId })
         };
         setSessions(prev => [...prev, newSession]);
@@ -201,12 +175,8 @@ const Schedule: React.FC = () => {
         }
     };
 
-    const openDeleteConfirmation = (sessionId: string) => {
-        setSessionToDelete(sessionId);
-    };
-    const closeDeleteConfirmation = () => {
-        setSessionToDelete(null);
-    };
+    const openDeleteConfirmation = (sessionId: string) => setSessionToDelete(sessionId);
+    const closeDeleteConfirmation = () => setSessionToDelete(null);
     const confirmDeleteSession = () => {
         if (!sessionToDelete) return;
         setSessions(prev => prev.filter(s => s.id !== sessionToDelete));
@@ -214,7 +184,6 @@ const Schedule: React.FC = () => {
         showToast(t('deleteSuccess'), 'info');
         closeDeleteConfirmation();
     };
-
 
     const handleDragStart = (e: React.DragEvent<HTMLDivElement>, session: ScheduledSession) => {
         e.dataTransfer.setData('sessionId', session.id);
@@ -273,75 +242,75 @@ const Schedule: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {TIME_SLOTS.map(time => (
+                        {GRANULAR_TIME_SLOTS.map((time, timeIndex) => (
                             <tr key={time}>
-                                <td className="p-3 font-mono text-base text-gray-700 dark:text-gray-400 border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50">{time}</td>
+                                {timeIndex % 2 === 0 && (
+                                     <td rowSpan={2} className="p-3 font-mono text-base text-gray-700 dark:text-gray-400 border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 align-middle">
+                                        {time}
+                                    </td>
+                                )}
                                 {DAYS_OF_WEEK.map(day => {
-                                    const sessionsInCell = scheduleGrid[time]?.[day] || [];
+                                    const cellContent = scheduleGrid[time]?.[day] || [];
+                                    if(cellContent.includes('spanned')) return null;
+
+                                    const sessionsInCell = cellContent.filter(c => c !== 'spanned') as ScheduledSession[];
+                                    const session = sessionsInCell[0]; // Assuming one session starts at a time per day
+                                    if (!session) {
+                                       return (
+                                            <td key={`${day}_${time}`}
+                                                className="p-1.5 border border-gray-200 dark:border-gray-600 align-top transition-colors h-10"
+                                                onDragOver={handleDragOver}
+                                                onDragLeave={handleDragLeave}
+                                                onDrop={(e) => handleDrop(e, day, time)}
+                                            />
+                                        );
+                                    }
+                                    
+                                    const subject = session.subjectId ? school.subjects.find(s => s.id === session.subjectId) : null;
+                                    const course = session.courseId ? school.courses.find(c => c.id === session.courseId) : null;
+                                    const entity = subject || course;
+                                    if (!entity) return <td key={`${day}_${time}`} className="p-1.5 border border-gray-200 dark:border-gray-600"></td>;
+
+                                    const isCourse = !!course;
+                                    const level = subject ? school.levels.find(l => l.id === subject.levelId) : null;
+                                    const teacher = isCourse
+                                        ? school.teachers.find(t => t.courseIds?.includes(entity.id))
+                                        : school.teachers.find(t => t.subjects.includes(entity.id));
+                                    
+                                    const { bg, text } = getColor(entity.name, isCourse);
+                                    const durationInSlots = Math.ceil((session.duration || TIME_GRID_INTERVAL) / TIME_GRID_INTERVAL);
+                                    const cardClasses = `relative p-3 rounded-lg text-sm shadow-md flex flex-col justify-center items-center cursor-move select-none h-full ${isCourse ? 'border-2 border-dashed' : ''}`;
+
                                     return (
                                         <td key={`${day}_${time}`}
-                                            className="p-1.5 border border-gray-200 dark:border-gray-600 align-top h-32 transition-colors"
+                                            className="p-1.5 border border-gray-200 dark:border-gray-600 align-top transition-colors"
+                                            rowSpan={durationInSlots}
                                             onDragOver={handleDragOver}
                                             onDragLeave={handleDragLeave}
                                             onDrop={(e) => handleDrop(e, day, time)}
                                         >
-                                            <div className="flex flex-row gap-1 h-full w-full">
-                                                {sessionsInCell.map(session => {
-                                                    const subject = session.subjectId ? school.subjects.find(s => s.id === session.subjectId) : null;
-                                                    const course = session.courseId ? school.courses.find(c => c.id === session.courseId) : null;
-                                                    const entity = subject || course;
-                                                    if (!entity) return null;
-
-                                                    const isCourse = !!course;
-                                                    const level = subject ? school.levels.find(l => l.id === subject.levelId) : null;
-                                                    const teacher = isCourse
-                                                        ? school.teachers.find(t => t.courseIds?.includes(entity.id))
-                                                        : school.teachers.find(t => t.subjects.includes(entity.id));
-                                                    
-                                                    const { bg, text } = getColor(entity.name, isCourse);
-                                                    
-                                                    const cardClasses = `relative p-3 rounded-lg text-sm shadow-md flex flex-col justify-center items-center cursor-move select-none flex-1 min-w-[150px] ${isCourse ? 'border-2 border-dashed' : ''}`;
-                                                    
-                                                    return (
-                                                        <div
-                                                            key={session.id}
-                                                            draggable
-                                                            onDragStart={(e) => handleDragStart(e, session)}
-                                                            onDragEnd={handleDragEnd}
-                                                            style={{ backgroundColor: bg, color: text, borderColor: text }}
-                                                            className={cardClasses}
-                                                        >
-                                                            <div className="absolute top-1.5 right-1.5 rtl:right-auto rtl:left-1.5 z-10 flex gap-1">
-                                                                <button
-                                                                    onClick={() => handleDuplicateSession(session.id)}
-                                                                    onMouseDown={(e) => e.stopPropagation()}
-                                                                    onTouchStart={(e) => e.stopPropagation()}
-                                                                    className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors"
-                                                                    aria-label={t('add')}
-                                                                    title={t('add')}
-                                                                >
-                                                                    <Copy size={14} className="text-inherit opacity-70" />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => openDeleteConfirmation(session.id)}
-                                                                    onMouseDown={(e) => e.stopPropagation()}
-                                                                    onTouchStart={(e) => e.stopPropagation()}
-                                                                    className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors"
-                                                                    aria-label={t('delete')}
-                                                                    title={t('delete')}
-                                                                >
-                                                                    <X size={14} className="text-inherit opacity-70" />
-                                                                </button>
-                                                            </div>
-                                                            <p className="font-bold text-base">{entity.name}</p>
-                                                            {level && <p className="opacity-90 font-semibold text-xs">{level.name}</p>}
-                                                            <div className="mt-1 opacity-80 text-xs text-center space-y-0.5">
-                                                                <p>{t('classroom')}: {session.classroom}</p>
-                                                                {teacher && <p>{teacher.name}</p>}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                            <div
+                                                key={session.id}
+                                                draggable
+                                                onDragStart={(e) => handleDragStart(e, session)}
+                                                onDragEnd={handleDragEnd}
+                                                style={{ backgroundColor: bg, color: text, borderColor: text }}
+                                                className={cardClasses}
+                                            >
+                                                <div className="absolute top-1.5 right-1.5 rtl:right-auto rtl:left-1.5 z-10 flex gap-1">
+                                                    <button onClick={() => handleDuplicateSession(session.id)} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('add')}>
+                                                        <Copy size={14} className="text-inherit opacity-70" />
+                                                    </button>
+                                                    <button onClick={() => openDeleteConfirmation(session.id)} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('delete')}>
+                                                        <X size={14} className="text-inherit opacity-70" />
+                                                    </button>
+                                                </div>
+                                                <p className="font-bold text-base">{entity.name}</p>
+                                                {level && <p className="opacity-90 font-semibold text-xs">{level.name}</p>}
+                                                <div className="mt-1 opacity-80 text-xs text-center space-y-0.5">
+                                                    <p>{t('classroom')}: {session.classroom}</p>
+                                                    {teacher && <p>{teacher.name}</p>}
+                                                </div>
                                             </div>
                                         </td>
                                     );
@@ -371,21 +340,33 @@ const Schedule: React.FC = () => {
                             }
                         </select>
                     </div>
-                    <div>
-                        <label className={labelClass}>{t('selectDay')}</label>
-                        <select name="day" value={newSessionData.day} onChange={handleNewSessionChange} required className={inputClass}>
-                            {DAYS_OF_WEEK.map(day => <option key={day} value={day}>{t(day as any)}</option>)}
-                        </select>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className={labelClass}>{t('selectDay')}</label>
+                            <select name="day" value={newSessionData.day} onChange={handleNewSessionChange} required className={inputClass}>
+                                {DAYS_OF_WEEK.map(day => <option key={day} value={day}>{t(day as any)}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className={labelClass}>{t('selectTime')}</label>
+                            <select name="timeSlot" value={newSessionData.timeSlot} onChange={handleNewSessionChange} required className={inputClass}>
+                                {GRANULAR_TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label className={labelClass}>{t('selectTime')}</label>
-                        <select name="timeSlot" value={newSessionData.timeSlot} onChange={handleNewSessionChange} required className={inputClass}>
-                            {TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className={labelClass}>{t('classroom')}</label>
-                        <input type="text" name="classroom" value={newSessionData.classroom} onChange={handleNewSessionChange} required className={inputClass} />
+                     <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className={labelClass}>{t('classroom')}</label>
+                            <input type="text" name="classroom" value={newSessionData.classroom} onChange={handleNewSessionChange} required className={inputClass} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>{t('duration')}</label>
+                            <select name="duration" value={newSessionData.duration} onChange={handleNewSessionChange} required className={inputClass}>
+                                {DURATION_OPTIONS.map(d => (
+                                    <option key={d} value={d}>{d} {t('minutes')}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
                     <div className="flex justify-end space-x-3 rtl:space-x-reverse pt-4">
                         <button type="button" onClick={handleCloseScheduleModal} className="px-4 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500">{t('cancel')}</button>

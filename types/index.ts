@@ -1,3 +1,4 @@
+
 import { TranslationKey } from '../i18n/index.ts';
 
 export enum UserRole {
@@ -83,10 +84,12 @@ export interface Expense {
 
 export interface ScheduledSession {
   id: string;
-  subjectId: string;
+  subjectId?: string;
+  courseId?: string;
   day: string;
   timeSlot: string;
   classroom: string;
+  duration: number; // in minutes
 }
 
 export interface School {
@@ -134,10 +137,10 @@ export interface AppContextType {
   deleteLevel: (schoolId: string, levelId: string) => void;
   addGroup: (schoolId: string, group: Omit<Group, 'id'>) => void;
   deleteGroup: (schoolId: string, groupId: string) => void;
-  addCourse: (schoolId: string, course: Omit<Course, 'id'>) => void;
+  addCourse: (schoolId: string, course: Omit<Course, 'id'>, sessionData?: { day: string; timeSlot: string; classroom: string; duration: number }[]) => void;
   updateCourse: (schoolId: string, course: Course) => void;
   deleteCourse: (schoolId: string, courseId: string) => void;
-  addSubject: (schoolId: string, subject: Omit<Subject, 'id'>, sessionData?: { day: string; timeSlot: string; classroom: string }[]) => void;
+  addSubject: (schoolId: string, subject: Omit<Subject, 'id'>, sessionData?: { day: string; timeSlot: string; classroom: string; duration: number }[]) => void;
   updateSubject: (schoolId: string, subject: Subject) => void;
   deleteSubject: (schoolId: string, subjectId: string) => void;
   addExpense: (schoolId: string, expense: Omit<Expense, 'id'>) => void;

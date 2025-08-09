@@ -40,7 +40,7 @@ const SubjectItem: React.FC<{ subject: Subject, onEdit: () => void, onDelete: ()
     const btnClass = "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900/50 transition-colors";
 
     return (
-        <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+        <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border-l-4" style={{borderLeftColor: subject.color || 'transparent'}}>
             <div className="flex justify-between items-start">
                 <div>
                     <p className="font-medium text-gray-800 dark:text-gray-200">{subject.name}</p>
@@ -87,7 +87,8 @@ const SubjectsAndCourses: React.FC = () => {
         name: '',
         fee: 0,
         teacherIds: [] as string[],
-        sessions: [] as {day: string, timeSlot: string, classroom: string, duration: number}[]
+        sessions: [] as {day: string, timeSlot: string, classroom: string, duration: number}[],
+        color: '#fef9c3',
     };
     const [courseFormData, setCourseFormData] = useState(initialCourseData);
     
@@ -99,7 +100,8 @@ const SubjectsAndCourses: React.FC = () => {
         sessionsPerMonth: 4,
         classroom: '',
         levelId: '',
-        sessions: [] as {day: string, timeSlot: string, classroom: string, duration: number}[]
+        sessions: [] as {day: string, timeSlot: string, classroom: string, duration: number}[],
+        color: '#dbeafe',
     };
     const [subjectFormData, setSubjectFormData] = useState(initialSubjectData);
 
@@ -117,6 +119,7 @@ const SubjectsAndCourses: React.FC = () => {
                     classroom: subject.classroom,
                     levelId: subject.levelId || '',
                     sessions: [],
+                    color: subject.color || '#dbeafe',
                 });
            } else if (modalState.type === 'course') {
                 const course = modalState.data as Course;
@@ -126,6 +129,7 @@ const SubjectsAndCourses: React.FC = () => {
                     fee: course.fee,
                     teacherIds: course.teacherIds || [],
                     sessions: [],
+                    color: course.color || '#fef9c3',
                 });
            }
         } else {
@@ -139,7 +143,7 @@ const SubjectsAndCourses: React.FC = () => {
         e.preventDefault();
         if (!currentUser?.schoolId || !courseFormData.name) return;
         
-        const courseData = { name: courseFormData.name, fee: courseFormData.fee, teacherIds: courseFormData.teacherIds };
+        const courseData = { name: courseFormData.name, fee: courseFormData.fee, teacherIds: courseFormData.teacherIds, color: courseFormData.color };
 
         if (modalState?.mode === 'edit' && courseFormData.id) {
             updateCourse(currentUser.schoolId, { id: courseFormData.id, ...courseData });
@@ -170,7 +174,8 @@ const SubjectsAndCourses: React.FC = () => {
             fee: subjectFormData.fee, 
             sessionsPerMonth: subjectFormData.sessionsPerMonth, 
             classroom: subjectFormData.classroom,
-            levelId: subjectFormData.levelId
+            levelId: subjectFormData.levelId,
+            color: subjectFormData.color,
         };
 
         if (modalState?.mode === 'edit' && subjectFormData.id) {
@@ -278,7 +283,7 @@ const SubjectsAndCourses: React.FC = () => {
                             .join(', ');
 
                         return (
-                            <div key={course.id} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                            <div key={course.id} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border-l-4" style={{borderLeftColor: course.color || 'transparent'}}>
                             <div className="flex justify-between items-center">
                                     <div>
                                         <span className="font-medium text-gray-800 dark:text-gray-200">{course.name}</span>
@@ -301,13 +306,15 @@ const SubjectsAndCourses: React.FC = () => {
             {/* Modals */}
             <Modal isOpen={modalState?.type === 'course'} onClose={() => setModalState(null)} title={modalState?.mode === 'edit' ? t('edit') : t('addNewCourse')}>
                 <form onSubmit={handleCourseSubmit} className="space-y-4">
-                    <div>
-                        <label className={labelClass}>{t('courseName')}</label>
-                        <input type="text" value={courseFormData.name} onChange={e => setCourseFormData({...courseFormData, name: e.target.value})} required className={inputClass} />
-                    </div>
-                    <div>
-                        <label className={labelClass}>{t('courseFee')}</label>
-                        <input type="number" min="0" value={courseFormData.fee} onChange={e => setCourseFormData({...courseFormData, fee: Number(e.target.value)})} required className={inputClass} />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="md:col-span-2">
+                            <label className={labelClass}>{t('courseName')}</label>
+                            <input type="text" value={courseFormData.name} onChange={e => setCourseFormData({...courseFormData, name: e.target.value})} required className={inputClass} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>{t('courseFee')}</label>
+                            <input type="number" min="0" value={courseFormData.fee} onChange={e => setCourseFormData({...courseFormData, fee: Number(e.target.value)})} required className={inputClass} />
+                        </div>
                     </div>
                      <div>
                         <label className={labelClass}>{t('selectTeachers')}</label>
@@ -324,6 +331,10 @@ const SubjectsAndCourses: React.FC = () => {
                                 </label>
                             ))}
                         </div>
+                    </div>
+                     <div>
+                        <label className={labelClass}>{t('color')}</label>
+                        <input type="color" value={courseFormData.color} onChange={e => setCourseFormData({...courseFormData, color: e.target.value})} className="w-full h-10 p-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer" />
                     </div>
                     {modalState?.mode === 'add' && (
                         <div className="pt-4 border-t dark:border-gray-600">
@@ -390,9 +401,13 @@ const SubjectsAndCourses: React.FC = () => {
                             <label className={labelClass}>{t('sessionsPerMonth')}</label>
                             <input type="number" name="sessionsPerMonth" value={subjectFormData.sessionsPerMonth} onChange={handleSubjectFormChange} required min="1" className={inputClass.replace('text-sm', 'text-base')} />
                         </div>
-                         <div className="col-span-full">
+                         <div className="col-span-2">
                             <label className={labelClass}>{t('defaultClassroom')}</label>
                             <input type="text" name="classroom" value={subjectFormData.classroom} onChange={handleSubjectFormChange} required className={inputClass.replace('text-sm', 'text-base')} />
+                        </div>
+                        <div className="col-span-2">
+                            <label className={labelClass}>{t('color')}</label>
+                            <input type="color" name="color" value={subjectFormData.color} onChange={handleSubjectFormChange} className="w-full h-10 p-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer" />
                         </div>
                     </div>
 

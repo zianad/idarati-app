@@ -55,13 +55,13 @@ const getInitialSchools = (): School[] => {
             levels: [{ id: 'l1', name: 'المستوى الأول' }],
             groups: [{ id: 'g1', name: 'الفوج أ', levelId: 'l1' }],
             subjects: [
-                {id: 'sub1', name: 'الرياضيات', fee: 250, sessionsPerMonth: 8, classroom: '101', levelId: 'l1'}, 
-                {id: 'sub2', name: 'العربية', fee: 200, sessionsPerMonth: 8, classroom: '102', levelId: 'l1'},
-                {id: 'sub3', name: 'الفرنسية', fee: 220, sessionsPerMonth: 4, classroom: '101', levelId: 'l1'}
+                {id: 'sub1', name: 'الرياضيات', fee: 250, sessionsPerMonth: 8, classroom: '101', levelId: 'l1', color: '#bfdbfe'}, 
+                {id: 'sub2', name: 'العربية', fee: 200, sessionsPerMonth: 8, classroom: '102', levelId: 'l1', color: '#bbf7d0'},
+                {id: 'sub3', name: 'الفرنسية', fee: 220, sessionsPerMonth: 4, classroom: '101', levelId: 'l1', color: '#fecaca'}
             ],
             students: [{ id: 's1', name: 'أحمد علي', parentPhone: '0555111222', levelId: 'l1', groupIds: ['g1'], subjectIds: ['sub1', 'sub2'], courseIds: ['c1'], registrationDate: new Date().toISOString(), schoolName: 'مدرسة ابتدائية' }],
             teachers: [{ id: 't1', name: 'الأستاذ خالد', subjects: ['sub1', 'sub3'], levelIds: ['l1'], courseIds: ['c1'], phone: '0555333444', salary: { type: 'fixed', value: 50000 } }, { id: 't2', name: 'الأستاذة فاطمة', subjects: ['sub2'], levelIds: ['l1'], phone: '0555555555', salary: { type: 'percentage', value: 50 } }],
-            courses: [{ id: 'c1', name: 'دورة برمجة', fee: 2000, teacherIds: ['t1'] }],
+            courses: [{ id: 'c1', name: 'دورة برمجة', fee: 2000, teacherIds: ['t1'], color: '#f5d0fe' }],
             payments: [{ id: 'p1', studentId: 's1', amount: 450, date: '2024-05', description: 'رسوم شهر مايو' }],
             expenses: [{ id: 'e1', description: 'فواتير كهرباء', amount: 5000, date: '2024-05-15' }],
             scheduledSessions: [],
@@ -342,7 +342,7 @@ const AppLogic: React.FC = () => {
         modifySchool(schoolId, school => ({ ...school, groups: school.groups.filter(g => g.id !== groupId)}));
     };
 
-    const addCourse = (schoolId: string, courseData: Omit<Course, 'id'>, sessionData?: { day: string; timeSlot: string; classroom: string; duration: number }[]) => {
+    const addCourse = (schoolId: string, courseData: Omit<Course, 'id' | 'color'> & { color?: string }, sessionData?: { day: string; timeSlot: string; classroom: string; duration: number }[]) => {
         const newCourse: Course = { ...courseData, id: generateId() };
         modifySchool(schoolId, school => {
             const newSchoolState = {
@@ -381,7 +381,7 @@ const AppLogic: React.FC = () => {
         }));
     };
     
-    const addSubject = (schoolId: string, subjectData: Omit<Subject, 'id'>, sessionData?: { day: string; timeSlot: string; classroom: string; duration: number }[]) => {
+    const addSubject = (schoolId: string, subjectData: Omit<Subject, 'id' | 'color'> & { color?: string }, sessionData?: { day: string; timeSlot: string; classroom: string; duration: number }[]) => {
         const newSubject: Subject = { ...subjectData, id: generateId() };
         modifySchool(schoolId, school => {
             const newSchoolState = {

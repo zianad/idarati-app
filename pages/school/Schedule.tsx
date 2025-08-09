@@ -4,8 +4,8 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from '../../hooks/useAppContext.ts';
 import { useLanguage } from '../../hooks/useLanguage.ts';
 import { useToast } from '../../hooks/useToast.ts';
-import { ScheduledSession } from '../../types/index.ts';
-import { Save, PlusCircle, X, Copy } from 'lucide-react';
+import { ScheduledSession, Subject, Course } from '../../types/index.ts';
+import { Save, PlusCircle, X, Copy, Edit } from 'lucide-react';
 import Modal from '../../components/Modal.tsx';
 
 // --- Constants and Helpers ---
@@ -21,23 +21,88 @@ const GRANULAR_TIME_SLOTS = Array.from({ length: (23 - 8) * (60 / TIME_GRID_INTE
     return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 });
 
-const SUBJECT_COLORS = ['#fecaca', '#fef08a', '#bbf7d0', '#bfdbfe', '#e9d5ff', '#fed7aa', '#fbcfe8', '#a7f3d0', '#bae6fd', '#ddd6fe', '#fde68a', '#fecdd3'];
-const SUBJECT_TEXT_COLORS = ['#b91c1c', '#a16207', '#166534', '#1d4ed8', '#7e22ce', '#b45309', '#9d174d', '#047857', '#0369a1', '#6d28d9', '#92400e', '#be123c'];
-
-const COURSE_COLORS = ['#c7d2fe', '#f5d0fe', '#a5f3fc', '#fef9c3', '#dcfce7', '#fce7f3'];
-const COURSE_TEXT_COLORS = ['#4338ca', '#86198f', '#0e7490', '#713f12', '#166534', '#9d174d'];
+const PREDEFINED_COLORS = [
+  '#fecaca', '#fed7aa', '#fef08a', '#d9f99d', '#bbf7d0', '#a7f3d0', '#99f6e4',
+  '#a5f3fc', '#bae6fd', '#bfdbfe', '#c7d2fe', '#ddd6fe', '#e9d5ff', '#f5d0fe', '#fbcfe8'
+];
 
 const stringToHash = (str: string) => { let hash = 0; for (let i = 0; i < str.length; i++) { hash = str.charCodeAt(i) + ((hash << 5) - hash); } return hash; };
-const getColor = (name: string, isCourse: boolean) => {
-    if (!name) return { bg: '#e5e7eb', text: '#1f2937' };
-    const hash = Math.abs(stringToHash(name));
-    if (isCourse) {
-        const index = hash % COURSE_COLORS.length;
-        return { bg: COURSE_COLORS[index], text: COURSE_TEXT_COLORS[index] };
+
+const getContrastYIQ = (hexcolor: string) => {
+	if (hexcolor.startsWith('#')) {
+        hexcolor = hexcolor.substring(1);
     }
-    const index = hash % SUBJECT_COLORS.length;
-    return { bg: SUBJECT_COLORS[index], text: SUBJECT_TEXT_COLORS[index] };
+	const r = parseInt(hexcolor.substr(0,2),16);
+	const g = parseInt(hexcolor.substr(2,2),16);
+	const b = parseInt(hexcolor.substr(4,2),16);
+	const yiq = ((r*299)+(g*587)+(b*114))/1000;
+	return (yiq >= 128) ? '#1f2937' : 'white';
+}
+
+
+const getColor = (entity: Subject | Course | null) => {
+    if (!entity) return { bg: '#e5e7eb', text: '#1f2937' };
+    
+    const bgColor = entity.color || PREDEFINED_COLORS[Math.abs(stringToHash(entity.id)) % PREDEFINED_COLORS.length];
+    const textColor = getContrastYIQ(bgColor);
+    
+    return { bg: bgColor, text: textColor };
 };
+
+const timeToMinutes = (time: string): number => {
+    if (!time) return 0;
+    const [hour, minute] = time.split(':').map(Number);
+    return (hour - 8) * 60 + minute;
+};
+
+type EnrichedSession = ScheduledSession & { start: number; end: number };
+
+const findOverlappingGroup = (startSession: EnrichedSession, allSessions: EnrichedSession[]): EnrichedSession[] => {
+    const group = new Set<EnrichedSession>([startSession]);
+    const toProcess = [startSession];
+    const processed = new Set<string>([startSession.id]);
+
+    while (toProcess.length > 0) {
+        const current = toProcess.pop()!;
+        
+        allSessions.forEach(other => {
+            if (current.id !== other.id && current.start < other.end && current.end > other.start) {
+                if (!processed.has(other.id)) {
+                    processed.add(other.id);
+                    group.add(other);
+                    toProcess.push(other);
+                }
+            }
+        });
+    }
+    return Array.from(group);
+};
+
+const layoutGroup = (group: EnrichedSession[]): { maxColumns: number, sessionColumns: Map<string, number> } => {
+    group.sort((a, b) => a.start - b.start);
+    const columns: EnrichedSession[][] = [];
+    const sessionColumns = new Map<string, number>();
+
+    for (const session of group) {
+        let placed = false;
+        for (let i = 0; i < columns.length; i++) {
+            const lastInColumn = columns[i][columns[i].length - 1];
+            if (session.start >= lastInColumn.end) {
+                columns[i].push(session);
+                sessionColumns.set(session.id, i);
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) {
+            const newColIndex = columns.length;
+            columns.push([session]);
+            sessionColumns.set(session.id, newColIndex);
+        }
+    }
+    return { maxColumns: columns.length, sessionColumns };
+};
+
 
 // --- Main Component ---
 const Schedule: React.FC = () => {
@@ -48,7 +113,13 @@ const Schedule: React.FC = () => {
 
     const [sessions, setSessions] = useState<ScheduledSession[]>([]);
     const [isDirty, setIsDirty] = useState(false);
-    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    
+    const [sessionModalState, setSessionModalState] = useState<{
+        isOpen: boolean;
+        mode: 'add' | 'edit';
+        session?: ScheduledSession;
+    }>({ isOpen: false, mode: 'add' });
+    
     const [newSessionData, setNewSessionData] = useState({
         entityType: 'subject' as 'subject' | 'course',
         entityId: '',
@@ -66,33 +137,47 @@ const Schedule: React.FC = () => {
         }
         setIsDirty(false);
     }, [school?.id, school?.scheduledSessions]);
+    
+    const minuteToPx = (40 / TIME_GRID_INTERVAL);
 
-    const scheduleGrid = useMemo(() => {
-        const grid: { [time: string]: { [day: string]: (ScheduledSession | 'spanned')[] } } = {};
-        GRANULAR_TIME_SLOTS.forEach(time => {
-            grid[time] = {};
-            DAYS_OF_WEEK.forEach(day => { grid[time][day] = []; });
-        });
+    const laidOutSessions = useMemo(() => {
+        if (!school) return new Map();
 
-        sessions.forEach(session => {
-            if (grid[session.timeSlot]?.[session.day]) {
-                grid[session.timeSlot][session.day].push(session);
+        const sessionLayoutMap = new Map<string, { top: number; left: number; width: number; height: number; }>();
+        
+        DAYS_OF_WEEK.forEach(day => {
+            const daySessions = (sessions || [])
+                .filter(s => s.day === day)
+                .map(s => ({
+                    ...s,
+                    start: timeToMinutes(s.timeSlot),
+                    end: timeToMinutes(s.timeSlot) + s.duration,
+                }));
 
-                const durationInSlots = Math.ceil((session.duration || TIME_GRID_INTERVAL) / TIME_GRID_INTERVAL);
-                if (durationInSlots > 1) {
-                    const startTimeIndex = GRANULAR_TIME_SLOTS.indexOf(session.timeSlot);
-                    for (let i = 1; i < durationInSlots; i++) {
-                        const nextSlotIndex = startTimeIndex + i;
-                        if (nextSlotIndex < GRANULAR_TIME_SLOTS.length) {
-                            const nextSlotTime = GRANULAR_TIME_SLOTS[nextSlotIndex];
-                            grid[nextSlotTime][session.day].push('spanned');
-                        }
-                    }
-                }
+            const processedSessions = new Set<string>();
+
+            for (const session of daySessions) {
+                if (processedSessions.has(session.id)) continue;
+
+                const group = findOverlappingGroup(session, daySessions);
+                group.forEach(s => processedSessions.add(s.id));
+
+                const { maxColumns, sessionColumns } = layoutGroup(group);
+
+                group.forEach(s => {
+                    const colIndex = sessionColumns.get(s.id)!;
+                    const width = 100 / maxColumns;
+                    sessionLayoutMap.set(s.id, {
+                        top: s.start * minuteToPx,
+                        height: s.duration * minuteToPx,
+                        left: colIndex * width,
+                        width: maxColumns > 1 ? width - 0.5 : width,
+                    });
+                });
             }
         });
-        return grid;
-    }, [sessions]);
+        return sessionLayoutMap;
+    }, [sessions, school, minuteToPx]);
 
 
     const handleSave = () => {
@@ -127,10 +212,33 @@ const Schedule: React.FC = () => {
                 levelId: initialLevelId,
             });
         }
-        setIsScheduleModalOpen(true);
+        setSessionModalState({ isOpen: true, mode: 'add' });
+    };
+
+    const handleOpenEditModal = (session: ScheduledSession) => {
+        if (!school) return;
+        const entityType = session.subjectId ? 'subject' : 'course';
+        const entityId = session.subjectId || session.courseId || '';
+        
+        let levelId = '';
+        if (entityType === 'subject' && session.subjectId) {
+            const subject = school.subjects.find(s => s.id === session.subjectId);
+            levelId = subject?.levelId || '';
+        }
+
+        setNewSessionData({
+            entityType,
+            entityId,
+            day: session.day,
+            timeSlot: session.timeSlot,
+            classroom: session.classroom,
+            duration: session.duration,
+            levelId,
+        });
+        setSessionModalState({ isOpen: true, mode: 'edit', session });
     };
     
-    const handleCloseScheduleModal = () => setIsScheduleModalOpen(false);
+    const handleCloseScheduleModal = () => setSessionModalState({ isOpen: false, mode: 'add' });
     
     const handleNewSessionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -156,25 +264,49 @@ const Schedule: React.FC = () => {
         });
     };
     
-    const handleScheduleSession = (e: React.FormEvent) => {
+    const handleSessionFormSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const { entityId, day, timeSlot, classroom, entityType, duration } = newSessionData;
         if (!school || !entityId || !day || !timeSlot || !classroom) {
             showToast(t('fillAllFields'), 'error');
             return;
         }
-        const newSession: ScheduledSession = { 
-            id: generateId(), 
-            day, 
-            timeSlot, 
-            classroom,
-            duration,
-            ...(entityType === 'subject' ? { subjectId: entityId } : { courseId: entityId })
-        };
-        setSessions(prev => [...prev, newSession]);
+        
+        const { mode, session: sessionToEdit } = sessionModalState;
+    
+        if (mode === 'edit' && sessionToEdit) {
+            const updatedSession: ScheduledSession = {
+                ...sessionToEdit,
+                day,
+                timeSlot,
+                classroom,
+                duration,
+            };
+            if (entityType === 'subject') {
+                updatedSession.subjectId = entityId;
+                delete updatedSession.courseId;
+            } else { // 'course'
+                updatedSession.courseId = entityId;
+                delete updatedSession.subjectId;
+            }
+    
+            setSessions(prev => prev.map(s => s.id === sessionToEdit.id ? updatedSession : s));
+            showToast(t('editSuccess'), 'success');
+        } else { // mode === 'add'
+            const newSession: ScheduledSession = { 
+                id: generateId(), 
+                day, 
+                timeSlot, 
+                classroom,
+                duration,
+                ...(entityType === 'subject' ? { subjectId: entityId } : { courseId: entityId })
+            };
+            setSessions(prev => [...prev, newSession]);
+            showToast(t('addSuccess'), 'success');
+        }
+        
         setIsDirty(true);
         handleCloseScheduleModal();
-        showToast(t('addSuccess'), 'success');
     };
 
     const handleDuplicateSession = (sessionId: string) => {
@@ -204,12 +336,13 @@ const Schedule: React.FC = () => {
     };
 
     const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => e.currentTarget.classList.remove('dragging');
-    const handleDragOver = (e: React.DragEvent<HTMLTableCellElement>) => { e.preventDefault(); e.currentTarget.classList.add('drop-target-active'); };
-    const handleDragLeave = (e: React.DragEvent<HTMLTableCellElement>) => e.currentTarget.classList.remove('drop-target-active');
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.currentTarget.classList.add('drop-target-active'); };
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => e.currentTarget.classList.remove('drop-target-active');
 
-    const handleDrop = (e: React.DragEvent<HTMLTableCellElement>, day: string, timeSlot: string) => {
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>, day: string, timeSlot: string) => {
         e.preventDefault();
         e.currentTarget.classList.remove('drop-target-active');
+        e.stopPropagation(); 
         const draggedSessionId = e.dataTransfer.getData('sessionId');
         const draggedSession = sessions.find(s => s.id === draggedSessionId);
         if (!draggedSession || (draggedSession.day === day && draggedSession.timeSlot === timeSlot)) return;
@@ -222,6 +355,7 @@ const Schedule: React.FC = () => {
 
     const inputClass = "mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-base px-3 py-2 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 border dark:border-gray-600";
     const labelClass = "block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2";
+    const gridBorderColor = "border-gray-200 dark:border-gray-700";
 
     return (
         <div className="bg-white dark:bg-gray-800 p-4 md:p-8 rounded-2xl shadow-lg">
@@ -244,104 +378,109 @@ const Schedule: React.FC = () => {
                 </div>
             </div>
             <div className="overflow-x-auto">
-                <table className="w-full min-w-[1200px] border-collapse text-center">
+                <table className="w-full min-w-[1200px] border-collapse text-center table-fixed">
                     <thead>
                         <tr className="bg-gray-100 dark:bg-gray-700">
-                            <th className="p-4 text-lg font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 w-40">{t('time')}</th>
+                            <th className={`p-4 text-lg font-semibold text-gray-600 dark:text-gray-300 border ${gridBorderColor} w-32`}>{t('time')}</th>
                             {DAYS_OF_WEEK.map(day => (
-                                <th key={day} className="p-4 text-lg font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600">{t(day as any)}</th>
+                                <th key={day} className={`p-4 text-lg font-semibold text-gray-600 dark:text-gray-300 border ${gridBorderColor}`}>{t(day as any)}</th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
-                        {GRANULAR_TIME_SLOTS.map((time, timeIndex) => (
-                            <tr key={time}>
-                                {timeIndex % 2 === 0 && (
-                                     <td rowSpan={2} className="p-3 font-mono text-base text-gray-700 dark:text-gray-400 border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 align-middle">
-                                        {time}
-                                    </td>
+                        <tr>
+                            <td className={`p-0 align-top border ${gridBorderColor} bg-gray-50 dark:bg-gray-700/50`}>
+                                {GRANULAR_TIME_SLOTS.map((time, timeIndex) =>
+                                    (timeIndex % 2 === 0) && (
+                                        <div key={time} className="h-20 text-center relative -top-3 font-mono text-xs md:text-base text-gray-700 dark:text-gray-400 flex items-center justify-center">
+                                            <span>{time}</span>
+                                        </div>
+                                    )
                                 )}
-                                {DAYS_OF_WEEK.map(day => {
-                                    const cellContent = scheduleGrid[time]?.[day] || [];
-                                    if(cellContent.includes('spanned')) return null;
-
-                                    const sessionsInCell = cellContent.filter(c => c !== 'spanned') as ScheduledSession[];
-                                    
-                                    if (sessionsInCell.length === 0) {
-                                        return (
-                                            <td key={`${day}_${time}`}
-                                                className="p-1 border border-gray-200 dark:border-gray-600 align-top transition-colors h-10"
-                                                onDragOver={handleDragOver}
-                                                onDragLeave={handleDragLeave}
-                                                onDrop={(e) => handleDrop(e, day, time)}
-                                            />
-                                        );
-                                    }
-
-                                    const maxDurationInSlots = Math.max(1, ...sessionsInCell.map(s => Math.ceil((s.duration || TIME_GRID_INTERVAL) / TIME_GRID_INTERVAL)));
-
-                                    return (
-                                        <td key={`${day}_${time}`}
-                                            className="p-1 border border-gray-200 dark:border-gray-600 align-top transition-colors"
-                                            rowSpan={maxDurationInSlots}
+                            </td>
+                            {DAYS_OF_WEEK.map(day => (
+                                <td key={day} className={`border ${gridBorderColor} p-0 relative`}>
+                                    {/* Background grid lines for dropping */}
+                                    {GRANULAR_TIME_SLOTS.map((time) => (
+                                        <div key={time}
+                                            className="h-10 border-b dark:border-gray-700/50"
                                             onDragOver={handleDragOver}
                                             onDragLeave={handleDragLeave}
                                             onDrop={(e) => handleDrop(e, day, time)}
-                                        >
-                                            <div className="flex flex-col md:flex-row gap-1 h-full">
-                                                {sessionsInCell.map(session => {
-                                                    const subject = session.subjectId ? school.subjects.find(s => s.id === session.subjectId) : null;
-                                                    const course = session.courseId ? school.courses.find(c => c.id === session.courseId) : null;
-                                                    const entity = subject || course;
-                                                    if (!entity) return <div key={session.id} className="flex-1" />;
+                                        ></div>
+                                    ))}
 
-                                                    const isCourse = !!course;
-                                                    const level = subject ? school.levels.find(l => l.id === subject.levelId) : null;
-                                                    const teacher = isCourse
-                                                        ? school.teachers.find(t => t.courseIds?.includes(entity.id))
-                                                        : school.teachers.find(t => t.subjects.includes(entity.id));
-                                                    
-                                                    const { bg, text } = getColor(entity.name, isCourse);
-                                                    const cardClasses = `relative p-2 rounded-lg text-xs shadow-md flex flex-col justify-center items-center cursor-move select-none w-full md:flex-1 min-w-0 ${isCourse ? 'border-2 border-dashed' : ''}`;
+                                    {/* Absolutely positioned sessions */}
+                                    {sessions
+                                        .filter(s => s.day === day)
+                                        .map(session => {
+                                            const layout = laidOutSessions.get(session.id);
+                                            if (!layout) return null;
 
-                                                    return (
-                                                        <div
-                                                            key={session.id}
-                                                            draggable
-                                                            onDragStart={(e) => handleDragStart(e, session)}
-                                                            onDragEnd={handleDragEnd}
-                                                            style={{ backgroundColor: bg, color: text, borderColor: text }}
-                                                            className={cardClasses}
-                                                        >
-                                                            <div className="absolute top-1.5 right-1.5 rtl:right-auto rtl:left-1.5 z-10 flex gap-1">
-                                                                <button onClick={() => handleDuplicateSession(session.id)} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('add')}>
-                                                                    <Copy size={12} className="text-inherit opacity-70" />
-                                                                </button>
-                                                                <button onClick={() => openDeleteConfirmation(session.id)} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('delete')}>
-                                                                    <X size={12} className="text-inherit opacity-70" />
-                                                                </button>
-                                                            </div>
-                                                            <p className="font-bold text-sm md:text-base text-center">{entity.name}</p>
-                                                            {level && <p className="opacity-90 font-semibold">{level.name}</p>}
-                                                            <div className="mt-1 opacity-80 text-center space-y-0.5">
-                                                                <p>{t('classroom')}: {session.classroom}</p>
-                                                                {teacher && <p>{teacher.name}</p>}
-                                                            </div>
+                                            const subject = session.subjectId ? school.subjects.find(s => s.id === session.subjectId) : null;
+                                            const course = session.courseId ? school.courses.find(c => c.id === session.courseId) : null;
+                                            const entity = subject || course;
+                                            if (!entity) return null;
+
+                                            const isCourse = !!course;
+                                            const level = subject ? school.levels.find(l => l.id === subject.levelId) : null;
+                                            const teacher = isCourse
+                                                ? school.teachers.find(t => t.courseIds?.includes(entity.id))
+                                                : school.teachers.find(t => t.subjects.includes(entity.id));
+                                            
+                                            const { bg, text } = getColor(entity);
+
+                                            const cardStyle: React.CSSProperties = {
+                                                position: 'absolute',
+                                                top: `${layout.top}px`,
+                                                left: `${layout.left}%`,
+                                                width: `${layout.width}%`,
+                                                height: `${layout.height}px`,
+                                                backgroundColor: bg,
+                                                color: text,
+                                                borderColor: text,
+                                            };
+
+                                            return (
+                                                <div
+                                                    key={session.id}
+                                                    draggable
+                                                    onDragStart={(e) => handleDragStart(e, session)}
+                                                    onDragEnd={handleDragEnd}
+                                                    style={cardStyle}
+                                                    className={`rounded-lg text-xs shadow-md flex flex-col cursor-move select-none overflow-hidden p-1 transition-all duration-200 ease-in-out ${isCourse ? 'border-2 border-dashed' : 'border'}`}
+                                                >
+                                                    <div className="absolute top-1 right-1 rtl:right-auto rtl:left-1 z-10 flex gap-0.5">
+                                                        <button onClick={(e) => { e.stopPropagation(); handleOpenEditModal(session); }} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('edit')}>
+                                                            <Edit size={12} className="text-inherit opacity-70" />
+                                                        </button>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleDuplicateSession(session.id); }} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('add')}>
+                                                            <Copy size={12} className="text-inherit opacity-70" />
+                                                        </button>
+                                                        <button onClick={(e) => { e.stopPropagation(); openDeleteConfirmation(session.id); }} onMouseDown={(e) => e.stopPropagation()} className="p-1 rounded-full bg-black/10 hover:bg-black/30 transition-colors" title={t('delete')}>
+                                                            <X size={12} className="text-inherit opacity-70" />
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex-1 flex flex-col justify-center items-center w-full text-center overflow-hidden">
+                                                        <p className="font-bold text-[13px] leading-tight break-words">{entity.name}</p>
+                                                        {level && <p className="opacity-90 font-semibold text-[11px]">{level.name}</p>}
+                                                        <div className="mt-1 opacity-80 space-y-0.5 text-[10px]">
+                                                            <p>{t('classroom')}: {session.classroom}</p>
+                                                            {teacher && <p>{teacher.name}</p>}
                                                         </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </td>
+                            ))}
+                        </tr>
                     </tbody>
                 </table>
             </div>
 
-            <Modal isOpen={isScheduleModalOpen} onClose={handleCloseScheduleModal} title={t('scheduleSession')}>
-                <form onSubmit={handleScheduleSession} className="space-y-4">
+            <Modal isOpen={sessionModalState.isOpen} onClose={handleCloseScheduleModal} title={sessionModalState.mode === 'edit' ? t('editSession') : t('scheduleSession')}>
+                <form onSubmit={handleSessionFormSubmit} className="space-y-4">
                     <div>
                         <label className={labelClass}>{t('subject')}</label>
                         <select name="entityType" value={newSessionData.entityType} onChange={handleNewSessionChange} required className={inputClass}>
@@ -409,17 +548,17 @@ const Schedule: React.FC = () => {
                 <div className="space-y-6">
                     <p className="text-lg text-gray-600 dark:text-gray-400">{t('confirmDelete')}</p>
                     <div className="flex justify-end space-x-4 rtl:space-x-reverse">
-                        <button 
-                            type="button" 
-                            onClick={closeDeleteConfirmation} 
-                            className="px-6 py-2.5 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 transition-colors"
+                        <button
+                            type="button"
+                            onClick={closeDeleteConfirmation}
+                            className="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
                         >
                             {t('cancel')}
                         </button>
-                        <button 
-                            type="button" 
-                            onClick={confirmDeleteSession} 
-                            className="px-6 py-2.5 bg-red-600 text-white font-semibold rounded-lg shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+                        <button
+                            type="button"
+                            onClick={confirmDeleteSession}
+                            className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700"
                         >
                             {t('delete')}
                         </button>

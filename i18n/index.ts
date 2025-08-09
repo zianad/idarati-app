@@ -23,6 +23,7 @@ const translations = {
     'upload': 'تحميل الشعار',
     'fillAllFields': 'الرجاء تعبئة جميع الحقول المطلوبة.',
     'schoolIsInactive': 'هذه المدرسة غير نشطة حاليا. يرجى الاتصال بالمسؤول.',
+    'color': 'اللون',
 
     // Super Admin
     'superAdminDashboard': 'لوحة تحكم المدير الخارق',
@@ -177,6 +178,7 @@ const translations = {
     'selectLevel': 'اختر المستوى',
     'duration': 'المدة',
     'minutes': 'دقائق',
+    'editSession': 'تعديل الحصة',
   },
   fr: {
     // General
@@ -200,6 +202,7 @@ const translations = {
     'upload': 'Télécharger le logo',
     'fillAllFields': 'Veuillez remplir tous les champs requis.',
     'schoolIsInactive': 'Cette école est actuellement inactive. Veuillez contacter l\'administrateur.',
+    'color': 'Couleur',
 
     // Super Admin
     'superAdminDashboard': 'Tableau de Bord Super Admin',
@@ -353,6 +356,7 @@ const translations = {
     'selectLevel': 'Sélectionner le niveau',
     'duration': 'Durée',
     'minutes': 'Minutes',
+    'editSession': 'Modifier la Session',
   }
 };
 
